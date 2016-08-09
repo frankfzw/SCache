@@ -8,7 +8,6 @@ import java.net.URLClassLoader
 
 import org.apache.log4j.{Level, LogManager, PropertyConfigurator}
 import org.slf4j.{Logger, LoggerFactory}
-import org.slf4j.impl.StaticLoggerBinder
 
 
 private[scache] trait Logging {
@@ -88,9 +87,11 @@ private[scache] trait Logging {
   }
 
   private def initializeLogging(): Unit = {
-    val loader = getClass.getClassLoader
-    val url = loader.getResource("log4j.properties")
-    PropertyConfigurator.configure(url)
+    val scache_home = ScacheConf.scacheHome
+    val propertiesPath = scache_home + "/conf/log4j.properties"
+    // val loader = getClass.getClassLoader
+    // val url = loader.getResource("log4j.properties")
+    PropertyConfigurator.configure(propertiesPath)
   }
 }
 
