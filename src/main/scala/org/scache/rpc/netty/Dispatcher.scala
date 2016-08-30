@@ -27,7 +27,7 @@ import scala.util.control.NonFatal
 import org.scache.util.Logging
 import org.scache.rpc._
 import org.scache.util.ThreadUtils
-import org.scache.network.RpcResponseCallback
+import org.scache.network.client.RpcResponseCallback
 
 /**
  * A message dispatcher, responsible for routing RPC messages to the appropriate endpoint(s).

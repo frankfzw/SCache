@@ -24,15 +24,15 @@ import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.annotation.Nullable
 
-import network.RpcResponseCallback
+import org.scache.network.client.RpcResponseCallback
 
 import scala.concurrent.{Future, Promise}
 import scala.reflect.ClassTag
 import scala.util.{DynamicVariable, Failure, Success, Try}
 import scala.util.control.NonFatal
 
-import org.scache.{SecurityManager, SparkConf}
-import org.scache.internal.Logging
+import org.scache.util.ScacheConf
+import org.scache.util.Logging
 import org.scache.network.TransportContext
 import org.scache.network.client._
 import org.scache.network.netty.SparkTransportConf
@@ -43,10 +43,9 @@ import org.scache.serializer.{JavaSerializer, JavaSerializerInstance}
 import org.scache.util.{ThreadUtils, Utils}
 
 private[netty] class NettyRpcEnv(
-    val conf: SparkConf,
+    val conf: ScacheConf,
     javaSerializerInstance: JavaSerializerInstance,
-    host: String,
-    securityManager: SecurityManager) extends RpcEnv(conf) with Logging {
+    host: String) extends RpcEnv(conf) with Logging {
 
   private[netty] val transportConf = SparkTransportConf.fromSparkConf(
     conf.clone.set("spark.rpc.io.numConnectionsPerPeer", "1"),
@@ -61,12 +60,7 @@ private[netty] class NettyRpcEnv(
     new NettyRpcHandler(dispatcher, this, streamManager))
 
   private def createClientBootstraps(): java.util.List[TransportClientBootstrap] = {
-    if (securityManager.isAuthenticationEnabled()) {
-      java.util.Arrays.asList(new SaslClientBootstrap(transportConf, "", securityManager,
-        securityManager.isSaslEncryptionEnabled()))
-    } else {
-      java.util.Collections.emptyList[TransportClientBootstrap]
-    }
+    java.util.Collections.emptyList[TransportClientBootstrap]
   }
 
   private val clientFactory = transportContext.createClientFactory(createClientBootstraps())
@@ -111,12 +105,7 @@ private[netty] class NettyRpcEnv(
   }
 
   def startServer(port: Int): Unit = {
-    val bootstraps: java.util.List[TransportServerBootstrap] =
-      if (securityManager.isAuthenticationEnabled()) {
-        java.util.Arrays.asList(new SaslServerBootstrap(transportConf, securityManager))
-      } else {
-        java.util.Collections.emptyList()
-      }
+    val bootstraps: java.util.List[TransportServerBootstrap] = java.util.Collections.emptyList()
     server = transportContext.createServer(host, port, bootstraps)
     dispatcher.registerRpcEndpoint(
       RpcEndpointVerifier.NAME, new RpcEndpointVerifier(this, dispatcher))
@@ -443,7 +432,7 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
     val javaSerializerInstance =
       new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
     val nettyEnv =
-      new NettyRpcEnv(sparkConf, javaSerializerInstance, config.host, config.securityManager)
+      new NettyRpcEnv(sparkConf, javaSerializerInstance, config.host)
     if (!config.clientMode) {
       val startNettyRpcEnv: Int => (NettyRpcEnv, Int) = { actualPort =>
         nettyEnv.startServer(actualPort)

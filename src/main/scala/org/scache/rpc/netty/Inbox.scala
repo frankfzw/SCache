@@ -21,8 +21,7 @@ import javax.annotation.concurrent.GuardedBy
 
 import scala.util.control.NonFatal
 
-import org.scache.SparkException
-import org.scache.internal.Logging
+import org.scache.util.Logging
 import org.scache.rpc.{RpcAddress, RpcEndpoint, ThreadSafeRpcEndpoint}
 
 
@@ -103,7 +102,7 @@ private[netty] class Inbox(
           case RpcMessage(_sender, content, context) =>
             try {
               endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
-                throw new SparkException(s"Unsupported message $message from ${_sender}")
+                throw new Exception(s"Unsupported message $message from ${_sender}")
               })
             } catch {
               case NonFatal(e) =>
@@ -115,7 +114,7 @@ private[netty] class Inbox(
 
           case OneWayMessage(_sender, content) =>
             endpoint.receive.applyOrElse[Any, Unit](content, { msg =>
-              throw new SparkException(s"Unsupported message $message from ${_sender}")
+              throw new Exception(s"Unsupported message $message from ${_sender}")
             })
 
           case OnStart =>

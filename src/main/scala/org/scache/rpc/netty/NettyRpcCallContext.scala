@@ -19,7 +19,7 @@ package org.scache.rpc.netty
 
 import scala.concurrent.Promise
 
-import org.scache.internal.Logging
+import org.scache.util.Logging
 import org.scache.network.client.RpcResponseCallback
 import org.scache.rpc.{RpcAddress, RpcCallContext}
 

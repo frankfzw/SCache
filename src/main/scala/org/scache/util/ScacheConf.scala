@@ -6,12 +6,35 @@ package org.scache.util
 
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 
 import com.typesafe.config.{Config, ConfigFactory}
+import scala.collection.JavaConverters._
 
-class ScacheConf extends Logging {
-  val configPath = ScacheConf.scacheHome + "/conf/scache.conf"
-  val config = ConfigFactory.parseFile(new File(configPath))
+class ScacheConf extends Cloneable with Logging {
+  private val configPath = ScacheConf.scacheHome + "/conf/scache.conf"
+  private val config = ConfigFactory.parseFile(new File(configPath))
+  private val settings = new ConcurrentHashMap[String, String]()
+
+  for (e <- config.entrySet().asScala) {
+    settings.put(e.getKey, e.getValue.toString)
+  }
+
+  private[scache] def set(key: String, value: String, slient: Boolean): ScacheConf = {
+    if (key == null) {
+      throw new Exception("config null key")
+    }
+
+    if (value == null) {
+      throw new Exception("config null value for " + key)
+    }
+
+    if (!slient) {
+      logInfo(s"config set key ${} to value ${}".format(key, value))
+    }
+    settings.put(key, value)
+    this
+  }
 
   def getInt(key: String, default: Int): Int = {
     if (config.hasPath(key)) {
@@ -53,6 +76,14 @@ class ScacheConf extends Logging {
     }
   }
 
+
+
+  override def clone(): ScacheConf = {
+    val cloned = new ScacheConf()
+    for (e <- config.entrySet()) {
+      cloned.config.
+    }
+  }
 }
 
 private[scache] object ScacheConf extends Logging {
