@@ -37,40 +37,40 @@ class ScacheConf extends Cloneable with Logging {
   }
 
   def getInt(key: String, default: Int): Int = {
-    if (config.hasPath(key)) {
-      return config.getInt(key)
+    if (settings.containsKey(key)) {
+      return settings.get(key).toInt
     } else {
       return default
     }
   }
 
   def getString(key: String, default: String): String = {
-    if (config.hasPath(key)) {
-      return config.getString(key)
+    if (settings.containsKey(key)) {
+      return settings.get(key)
     } else {
       return default
     }
   }
 
   def getDouble(key: String, default: Double): Double = {
-    if (config.hasPath(key)) {
-      return config.getDouble(key)
+    if (settings.containsKey(key)) {
+      return settings.get(key).toDouble
     } else {
       return default
     }
   }
 
   def getBoolean(key: String, default: Boolean): Boolean = {
-    if (config.hasPath(key)) {
-      return config.getBoolean(key)
+    if (settings.containsKey(key)) {
+      return settings.get(key).toBoolean
     } else {
       return default
     }
   }
 
   def getTimeAsMs(key: String, default: String): Long = {
-    if (config.hasPath(key)) {
-      return Utils.timeStringAs(config.getString(key), TimeUnit.MILLISECONDS)
+    if (settings.containsKey(key)) {
+      return Utils.timeStringAs(settings.get(key), TimeUnit.MILLISECONDS)
     } else {
       return Utils.timeStringAs(default, TimeUnit.MILLISECONDS)
     }
@@ -80,9 +80,11 @@ class ScacheConf extends Cloneable with Logging {
 
   override def clone(): ScacheConf = {
     val cloned = new ScacheConf()
-    for (e <- config.entrySet()) {
-      cloned.config.
+    settings.entrySet().asScala.foreach {
+      e =>
+        cloned.set(e.getKey, e.getValue, true)
     }
+    cloned
   }
 }
 
