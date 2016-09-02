@@ -20,6 +20,8 @@ class ScacheConf extends Cloneable with Logging {
     settings.put(e.getKey, e.getValue.toString)
   }
 
+  ScacheConf.setSingleton(this)
+
   private[scache] def set(key: String, value: String, slient: Boolean): ScacheConf = {
     if (key == null) {
       throw new Exception("config null key")
@@ -76,6 +78,49 @@ class ScacheConf extends Cloneable with Logging {
     }
   }
 
+  def getTimeAsSeconds(key: String, default: String): Long = {
+    if (settings.containsKey(key)) {
+      return Utils.timeStringAs(settings.get(key), TimeUnit.SECONDS)
+    } else {
+      return Utils.timeStringAs(default, TimeUnit.SECONDS)
+    }
+  }
+
+  def getSizeAsBytes(key: String, defaultValue: String): Long = {
+    if (settings.containsKey(key)) {
+      return Utils.byteStringAsBytes(settings.get(key))
+    } else {
+      return Utils.byteStringAsBytes(defaultValue)
+    }
+  }
+
+  def getSizeAsKb(key: String, defaultValue: String): Long = {
+    if (settings.containsKey(key)) {
+      return Utils.byteStringAsKb(settings.get(key))
+    } else {
+      return Utils.byteStringAsKb(defaultValue)
+    }
+  }
+
+  def getSizeAsMb(key: String, defaultValue: String): Long = {
+    if (settings.containsKey(key)) {
+      return Utils.byteStringAsMb(settings.get(key))
+    } else {
+      return Utils.byteStringAsMb(defaultValue)
+    }
+  }
+
+  def getAll(): Array[(String, String)] = {
+    settings.entrySet().asScala.map(e => (e.getKey, e.getValue)).toArray
+  }
+
+  private final val avroNamespace = "avro.schema."
+
+  def getAvroSchema: Map[Long, String] = {
+    getAll.filter { case (k, v) => k.startsWith(avroNamespace) }
+      .map { case (k, v) => (k.substring(avroNamespace.length).toLong, v) }
+      .toMap
+  }
 
 
   override def clone(): ScacheConf = {
@@ -86,8 +131,29 @@ class ScacheConf extends Cloneable with Logging {
     }
     cloned
   }
+
+  //TODO: empty now
+  def stop() = {
+
+  }
 }
 
 private[scache] object ScacheConf extends Logging {
+
+  private def setSingleton(c: ScacheConf) = {
+    if (conf == null) {
+      conf = c
+    } else {
+      logError("Scache Conf can be init only once")
+    }
+  }
+
+  def getConf(): ScacheConf = {
+    return conf
+  }
+
+  private var conf: ScacheConf = null
   val scacheHome = System.getenv("SCACHE_HOME")
+
+  private[scache] val DRIVER_IDENTIFIER = "driver"
 }

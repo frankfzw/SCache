@@ -67,7 +67,7 @@ public class SaslClientBootstrap implements TransportClientBootstrap {
    */
   @Override
   public void doBootstrap(TransportClient client, Channel channel) {
-    SparkSaslClient saslClient = new SparkSaslClient(appId, secretKeyHolder, encrypt);
+    ScacheSaslClient saslClient = new ScacheSaslClient(appId, secretKeyHolder, encrypt);
     try {
       byte[] payload = saslClient.firstToken();
 
@@ -84,7 +84,7 @@ public class SaslClientBootstrap implements TransportClientBootstrap {
       client.setClientId(appId);
 
       if (encrypt) {
-        if (!SparkSaslServer.QOP_AUTH_CONF.equals(saslClient.getNegotiatedProperty(Sasl.QOP))) {
+        if (!ScacheSaslServer.QOP_AUTH_CONF.equals(saslClient.getNegotiatedProperty(Sasl.QOP))) {
           throw new RuntimeException(
             new SaslException("Encryption requests by negotiated non-encrypted connection."));
         }

@@ -23,8 +23,8 @@ import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import scala.util.control.NonFatal
 
-import org.scache.{SparkConf, SparkException}
 import org.scache.util.Utils
+import org.scache.util.ScacheConf
 
 /**
  * An exception thrown if RpcTimeout modifies a [[TimeoutException]].
@@ -74,7 +74,7 @@ private[scache] class RpcTimeout(val duration: FiniteDuration, val timeoutProp: 
   def awaitResult[T](future: Future[T]): T = {
     val wrapAndRethrow: PartialFunction[Throwable, T] = {
       case NonFatal(t) =>
-        throw new SparkException("Exception thrown in awaitResult", t)
+        throw new Exception("Exception thrown in awaitResult", t)
     }
     try {
       // scalastyle:off awaitresult
@@ -95,8 +95,8 @@ private[scache] object RpcTimeout {
    * @param timeoutProp property key for the timeout in seconds
    * @throws NoSuchElementException if property is not set
    */
-  def apply(conf: SparkConf, timeoutProp: String): RpcTimeout = {
-    val timeout = { conf.getTimeAsSeconds(timeoutProp).seconds }
+  def apply(conf: ScacheConf, timeoutProp: String): RpcTimeout = {
+    val timeout = { conf.getTimeAsSeconds(timeoutProp, "10") }.seconds
     new RpcTimeout(timeout, timeoutProp)
   }
 
@@ -109,7 +109,7 @@ private[scache] object RpcTimeout {
    * @param timeoutProp property key for the timeout in seconds
    * @param defaultValue default timeout value in seconds if property not found
    */
-  def apply(conf: SparkConf, timeoutProp: String, defaultValue: String): RpcTimeout = {
+  def apply(conf: ScacheConf, timeoutProp: String, defaultValue: String): RpcTimeout = {
     val timeout = { conf.getTimeAsSeconds(timeoutProp, defaultValue).seconds }
     new RpcTimeout(timeout, timeoutProp)
   }
@@ -124,18 +124,19 @@ private[scache] object RpcTimeout {
    * @param timeoutPropList prioritized list of property keys for the timeout in seconds
    * @param defaultValue default timeout value in seconds if no properties found
    */
-  def apply(conf: SparkConf, timeoutPropList: Seq[String], defaultValue: String): RpcTimeout = {
+  def apply(conf: ScacheConf, timeoutPropList: Seq[String], defaultValue: String): RpcTimeout = {
     require(timeoutPropList.nonEmpty)
 
     // Find the first set property or use the default value with the first property
-    val itr = timeoutPropList.iterator
-    var foundProp: Option[(String, String)] = None
-    while (itr.hasNext && foundProp.isEmpty) {
-      val propKey = itr.next()
-      conf.getOption(propKey).foreach { prop => foundProp = Some(propKey, prop) }
-    }
-    val finalProp = foundProp.getOrElse(timeoutPropList.head, defaultValue)
-    val timeout = { Utils.timeStringAsSeconds(finalProp._2).seconds }
-    new RpcTimeout(timeout, finalProp._1)
+    // val itr = timeoutPropList.iterator
+    // var foundProp: Option[(String, String)] = None
+    // while (itr.hasNext && foundProp.isEmpty) {
+    //   val propKey = itr.next()
+    //   conf.getOption(propKey).foreach { prop => foundProp = Some(propKey, prop) }
+    // }
+    // val finalProp = foundProp.getOrElse(timeoutPropList.head, defaultValue)
+    // val timeout = { Utils.timeStringAsSeconds(finalProp._2).seconds }
+    val timeout = conf.getTimeAsSeconds(timeoutPropList.head, defaultValue).seconds
+    new RpcTimeout(timeout, timeoutPropList.head)
   }
 }

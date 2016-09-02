@@ -17,6 +17,8 @@
 
 package org.scache.rpc
 
+import org.scache.util.Utils
+
 /**
  * Address for an RPC environment, with hostname and port.
  */
@@ -25,7 +27,7 @@ private[scache] case class RpcAddress(host: String, port: Int) {
   def hostPort: String = host + ":" + port
 
   /** Returns a string in the form of "scache://host:port". */
-  def toSparkURL: String = "scache://" + hostPort
+  def toScacheURL: String = "scache://" + hostPort
 
   override def toString: String = hostPort
 }
@@ -40,8 +42,8 @@ private[scache] object RpcAddress {
   }
 
   /** Returns the [[RpcAddress]] encoded in the form of "scache://host:port" */
-  def fromSparkURL(scacheUrl: String): RpcAddress = {
-    val (host, port) = Utils.extractHostPortFromSparkUrl(scacheUrl)
+  def fromScacheURL(scacheUrl: String): RpcAddress = {
+    val (host, port) = Utils.extractHostPortFromScacheUrl(scacheUrl)
     RpcAddress(host, port)
   }
 }

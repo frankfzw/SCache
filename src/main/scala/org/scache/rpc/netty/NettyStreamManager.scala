@@ -29,8 +29,6 @@ import org.scache.util.Utils
  *
  * Three kinds of resources can be registered in this manager, all backed by actual files:
  *
- * - "/files": a flat list of files; used as the backend for [[SparkContext.addFile]].
- * - "/jars": a flat list of files; used as the backend for [[SparkContext.addJar]].
  * - arbitrary directories; all files under the directory become available through the manager,
  *   respecting the directory's hierarchy.
  *
@@ -70,7 +68,7 @@ private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
     require(existingPath == null || existingPath == file,
       s"File ${file.getName} was already registered with a different path " +
         s"(old path = $existingPath, new path = $file")
-    s"${rpcEnv.address.toSparkURL}/files/${Utils.encodeFileNameToURIRawPath(file.getName())}"
+    s"${rpcEnv.address.toScacheURL}/files/${Utils.encodeFileNameToURIRawPath(file.getName())}"
   }
 
   override def addJar(file: File): String = {
@@ -78,14 +76,14 @@ private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
     require(existingPath == null || existingPath == file,
       s"File ${file.getName} was already registered with a different path " +
         s"(old path = $existingPath, new path = $file")
-    s"${rpcEnv.address.toSparkURL}/jars/${Utils.encodeFileNameToURIRawPath(file.getName())}"
+    s"${rpcEnv.address.toScacheURL}/jars/${Utils.encodeFileNameToURIRawPath(file.getName())}"
   }
 
   override def addDirectory(baseUri: String, path: File): String = {
     val fixedBaseUri = validateDirectoryUri(baseUri)
     require(dirs.putIfAbsent(fixedBaseUri.stripPrefix("/"), path) == null,
       s"URI '$fixedBaseUri' already registered.")
-    s"${rpcEnv.address.toSparkURL}$fixedBaseUri"
+    s"${rpcEnv.address.toScacheURL}$fixedBaseUri"
   }
 
 }

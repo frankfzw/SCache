@@ -35,22 +35,23 @@ import org.scache.util.ScacheConf
 import org.scache.util.Logging
 import org.scache.network.TransportContext
 import org.scache.network.client._
-import org.scache.network.netty.SparkTransportConf
+import org.scache.network.netty.ScacheTransportConf
 import org.scache.network.sasl.{SaslClientBootstrap, SaslServerBootstrap}
 import org.scache.network.server._
 import org.scache.rpc._
 import org.scache.serializer.{JavaSerializer, JavaSerializerInstance}
 import org.scache.util.{ThreadUtils, Utils}
+import org.eclipse.jetty.util.MultiException
 
 private[netty] class NettyRpcEnv(
     val conf: ScacheConf,
     javaSerializerInstance: JavaSerializerInstance,
     host: String) extends RpcEnv(conf) with Logging {
 
-  private[netty] val transportConf = SparkTransportConf.fromSparkConf(
-    conf.clone.set("spark.rpc.io.numConnectionsPerPeer", "1"),
+  private[netty] val transportConf = ScacheTransportConf.fromScacheConf(
+    conf.clone.set("scache.rpc.io.numConnectionsPerPeer", "1", false),
     "org/scache/rpc",
-    conf.getInt("spark.rpc.io.threads", 0))
+    conf.getInt("scache.rpc.io.threads", 0))
 
   private val dispatcher: Dispatcher = new Dispatcher(this)
 
@@ -82,7 +83,7 @@ private[netty] class NettyRpcEnv(
   // TODO: a non-blocking TransportClientFactory.createClient in future
   private[netty] val clientConnectionExecutor = ThreadUtils.newDaemonCachedThreadPool(
     "netty-rpc-connection",
-    conf.getInt("spark.rpc.connect.threads", 64))
+    conf.getInt("scache.rpc.connect.threads", 64))
 
   @volatile private var server: TransportServer = _
 
@@ -129,7 +130,7 @@ private[netty] class NettyRpcEnv(
       if (find) {
         Future.successful(endpointRef)
       } else {
-        Future.failed(new RpcEndpointNotFoundException(uri))
+        Future.failed(new Exception("url not found: " + uri))
       }
     }(ThreadUtils.sameThread)
   }
@@ -329,19 +330,19 @@ private[netty] class NettyRpcEnv(
     if (fileDownloadFactory == null) synchronized {
       if (fileDownloadFactory == null) {
         val module = "files"
-        val prefix = "spark.rpc.io."
+        val prefix = "scache.rpc.io."
         val clone = conf.clone()
 
-        // Copy any RPC configuration that is not overridden in the spark.files namespace.
+        // Copy any RPC configuration that is not overridden in the scache.files namespace.
         conf.getAll.foreach { case (key, value) =>
           if (key.startsWith(prefix)) {
             val opt = key.substring(prefix.length())
-            clone.setIfMissing(s"spark.$module.io.$opt", value)
+            clone.set(s"scache.$module.io.$opt", value, false)
           }
         }
 
-        val ioThreads = clone.getInt("spark.files.io.threads", 1)
-        val downloadConf = SparkTransportConf.fromSparkConf(clone, module, ioThreads)
+        val ioThreads = clone.getInt("scache.files.io.threads", 1)
+        val downloadConf = ScacheTransportConf.fromScacheConf(clone, module, ioThreads)
         val downloadContext = new TransportContext(downloadConf, new NoOpRpcHandler(), true)
         fileDownloadFactory = downloadContext.createClientFactory(createClientBootstraps())
       }
@@ -426,20 +427,20 @@ private[netty] object NettyRpcEnv extends Logging {
 private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
 
   def create(config: RpcEnvConfig): RpcEnv = {
-    val sparkConf = config.conf
+    val scacheConf = config.conf
     // Use JavaSerializerInstance in multiple threads is safe. However, if we plan to support
     // KryoSerializer in future, we have to use ThreadLocal to store SerializerInstance
     val javaSerializerInstance =
-      new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
+      new JavaSerializer(scacheConf).newInstance().asInstanceOf[JavaSerializerInstance]
     val nettyEnv =
-      new NettyRpcEnv(sparkConf, javaSerializerInstance, config.host)
+      new NettyRpcEnv(scacheConf, javaSerializerInstance, config.host)
     if (!config.clientMode) {
       val startNettyRpcEnv: Int => (NettyRpcEnv, Int) = { actualPort =>
         nettyEnv.startServer(actualPort)
         (nettyEnv, nettyEnv.address.port)
       }
       try {
-        Utils.startServiceOnPort(config.port, startNettyRpcEnv, sparkConf, config.name)._1
+        Utils.startServiceOnPort(config.port, startNettyRpcEnv, scacheConf, config.name)._1
       } catch {
         case NonFatal(e) =>
           nettyEnv.shutdown()
@@ -471,7 +472,7 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
  * @param nettyEnv The RpcEnv associated with this ref.
  */
 private[netty] class NettyRpcEndpointRef(
-    @transient private val conf: SparkConf,
+    @transient private val conf: ScacheConf,
     endpointAddress: RpcEndpointAddress,
     @transient @volatile private var nettyEnv: NettyRpcEnv)
   extends RpcEndpointRef(conf) with Serializable with Logging {

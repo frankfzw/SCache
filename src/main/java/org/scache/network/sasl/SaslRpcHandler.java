@@ -57,7 +57,7 @@ class SaslRpcHandler extends RpcHandler {
   /** Class which provides secret keys which are shared by server and client on a per-app basis. */
   private final SecretKeyHolder secretKeyHolder;
 
-  private SparkSaslServer saslServer;
+  private ScacheSaslServer saslServer;
   private boolean isComplete;
 
   SaslRpcHandler(
@@ -92,7 +92,7 @@ class SaslRpcHandler extends RpcHandler {
     if (saslServer == null) {
       // First message in the handshake, setup the necessary state.
       client.setClientId(saslMessage.appId);
-      saslServer = new SparkSaslServer(saslMessage.appId, secretKeyHolder,
+      saslServer = new ScacheSaslServer(saslMessage.appId, secretKeyHolder,
         conf.saslServerAlwaysEncrypt());
     }
 
@@ -113,7 +113,7 @@ class SaslRpcHandler extends RpcHandler {
     if (saslServer.isComplete()) {
       logger.debug("SASL authentication successful for channel {}", client);
       isComplete = true;
-      if (SparkSaslServer.QOP_AUTH_CONF.equals(saslServer.getNegotiatedProperty(Sasl.QOP))) {
+      if (ScacheSaslServer.QOP_AUTH_CONF.equals(saslServer.getNegotiatedProperty(Sasl.QOP))) {
         logger.debug("Enabling encryption for channel {}", client);
         SaslEncryption.addToChannel(channel, saslServer, conf.maxSaslEncryptedBlockSize());
         saslServer = null;

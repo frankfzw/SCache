@@ -17,13 +17,12 @@
 
 package org.scache.rpc
 
-import org.scache.SparkException
 
 /**
  * A factory class to create the [[RpcEnv]]. It must have an empty constructor so that it can be
  * created using Reflection.
  */
-private[spark] trait RpcEnvFactory {
+private[scache] trait RpcEnvFactory {
 
   def create(config: RpcEnvConfig): RpcEnv
 }
@@ -43,7 +42,7 @@ private[spark] trait RpcEnvFactory {
  * If any error is thrown from one of [[RpcEndpoint]] methods except `onError`, `onError` will be
  * invoked with the cause. If `onError` throws an error, [[RpcEnv]] will ignore it.
  */
-private[spark] trait RpcEndpoint {
+private[scache] trait RpcEndpoint {
 
   /**
    * The [[RpcEnv]] that this [[RpcEndpoint]] is registered to.
@@ -64,18 +63,18 @@ private[spark] trait RpcEndpoint {
 
   /**
    * Process messages from [[RpcEndpointRef.send]] or [[RpcCallContext.reply)]]. If receiving a
-   * unmatched message, [[SparkException]] will be thrown and sent to `onError`.
+   * unmatched message, [[Exception]] will be thrown and sent to `onError`.
    */
   def receive: PartialFunction[Any, Unit] = {
-    case _ => throw new SparkException(self + " does not implement 'receive'")
+    case _ => throw new Exception(self + " does not implement 'receive'")
   }
 
   /**
    * Process messages from [[RpcEndpointRef.ask]]. If receiving a unmatched message,
-   * [[SparkException]] will be thrown and sent to `onError`.
+   * [[Exception]] will be thrown and sent to `onError`.
    */
   def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
-    case _ => context.sendFailure(new SparkException(self + " won't reply anything"))
+    case _ => context.sendFailure(new Exception(self + " won't reply anything"))
   }
 
   /**
@@ -145,4 +144,4 @@ private[spark] trait RpcEndpoint {
  * However, there is no guarantee that the same thread will be executing the same
  * [[ThreadSafeRpcEndpoint]] for different messages.
  */
-private[spark] trait ThreadSafeRpcEndpoint extends RpcEndpoint
+private[scache] trait ThreadSafeRpcEndpoint extends RpcEndpoint

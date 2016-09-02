@@ -23,8 +23,7 @@ import javax.annotation.concurrent.GuardedBy
 
 import scala.util.control.NonFatal
 
-import org.scache.SparkException
-import org.scache.internal.Logging
+import org.scache.util.Logging
 import org.scache.network.client.{RpcResponseCallback, TransportClient}
 import org.scache.rpc.{RpcAddress, RpcEnvStoppedException}
 
@@ -109,7 +108,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
 
   /**
    * Send a message. If there is no active connection, cache it and launch a new connection. If
-   * [[Outbox]] is stopped, the sender will be notified with a [[SparkException]].
+   * [[Outbox]] is stopped, the sender will be notified with a [[Exception]].
    */
   def send(message: OutboxMessage): Unit = {
     val dropped = synchronized {
@@ -121,7 +120,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
       }
     }
     if (dropped) {
-      message.onFailure(new SparkException("Message is dropped because Outbox is stopped"))
+      message.onFailure(new Exception("Message is dropped because Outbox is stopped"))
     } else {
       drainOutbox()
     }
@@ -247,7 +246,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
 
   /**
    * Stop [[Outbox]]. The remaining messages in the [[Outbox]] will be notified with a
-   * [[SparkException]].
+   * [[Exception]].
    */
   def stop(): Unit = {
     synchronized {
@@ -265,7 +264,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
     // update messages and it's safe to just drain the queue.
     var message = messages.poll()
     while (message != null) {
-      message.onFailure(new SparkException("Message is dropped because Outbox is stopped"))
+      message.onFailure(new Exception("Message is dropped because Outbox is stopped"))
       message = messages.poll()
     }
   }

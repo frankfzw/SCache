@@ -20,14 +20,13 @@ package org.scache.rpc
 import scala.concurrent.Future
 import scala.reflect.ClassTag
 
-import org.scache.{SparkConf, SparkException}
-import org.scache.internal.Logging
-import org.scache.util.RpcUtils
+import org.scache.util.Logging
+import org.scache.util.{ScacheConf, RpcUtils}
 
 /**
  * A reference for a remote [[RpcEndpoint]]. [[RpcEndpointRef]] is thread-safe.
  */
-private[scache] abstract class RpcEndpointRef(conf: SparkConf)
+private[scache] abstract class RpcEndpointRef(conf: ScacheConf)
   extends Serializable with Logging {
 
   private[this] val maxRetries = RpcUtils.numRetries(conf)
@@ -101,7 +100,7 @@ private[scache] abstract class RpcEndpointRef(conf: SparkConf)
         val future = ask[T](message, timeout)
         val result = timeout.awaitResult(future)
         if (result == null) {
-          throw new SparkException("RpcEndpoint returned null")
+          throw new Exception("RpcEndpoint returned null")
         }
         return result
       } catch {
@@ -116,7 +115,7 @@ private[scache] abstract class RpcEndpointRef(conf: SparkConf)
       }
     }
 
-    throw new SparkException(
+    throw new Exception(
       s"Error sending message [message = $message]", lastException)
   }
 

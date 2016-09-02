@@ -17,7 +17,6 @@
 
 package org.scache.rpc
 
-import org.scache.SparkException
 
 /**
  * An address identifier for an RPC endpoint.
@@ -37,9 +36,9 @@ private[scache] case class RpcEndpointAddress(val rpcAddress: RpcAddress, val na
   }
 
   override val toString = if (rpcAddress != null) {
-      s"spark://$name@${rpcAddress.host}:${rpcAddress.port}"
+      s"scache://$name@${rpcAddress.host}:${rpcAddress.port}"
     } else {
-      s"spark-client://$name"
+      s"scache-client://$name"
     }
 }
 
@@ -49,25 +48,25 @@ private[scache] object RpcEndpointAddress {
     new RpcEndpointAddress(host, port, name)
   }
 
-  def apply(sparkUrl: String): RpcEndpointAddress = {
+  def apply(scacheUrl: String): RpcEndpointAddress = {
     try {
-      val uri = new java.net.URI(sparkUrl)
+      val uri = new java.net.URI(scacheUrl)
       val host = uri.getHost
       val port = uri.getPort
       val name = uri.getUserInfo
-      if (uri.getScheme != "spark" ||
+      if (uri.getScheme != "scache" ||
           host == null ||
           port < 0 ||
           name == null ||
           (uri.getPath != null && !uri.getPath.isEmpty) || // uri.getPath returns "" instead of null
           uri.getFragment != null ||
           uri.getQuery != null) {
-        throw new SparkException("Invalid Spark URL: " + sparkUrl)
+        throw new Exception("Invalid Scache URL: " + scacheUrl)
       }
       new RpcEndpointAddress(host, port, name)
     } catch {
       case e: java.net.URISyntaxException =>
-        throw new SparkException("Invalid Spark URL: " + sparkUrl, e)
+        throw new Exception("Invalid Scache URL: " + scacheUrl, e)
     }
   }
 }

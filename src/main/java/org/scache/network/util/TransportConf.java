@@ -61,7 +61,7 @@ public class TransportConf {
   }
 
   private String getConfKey(String suffix) {
-    return "spark." + module + "." + suffix;
+    return "scache." + module + "." + suffix;
   }
 
   /** IO mode: nio or epoll */
@@ -75,7 +75,7 @@ public class TransportConf {
   /** Connect timeout in milliseconds. Default 120 secs. */
   public int connectionTimeoutMs() {
     long defaultNetworkTimeoutS = JavaUtils.timeStringAsSec(
-      conf.get("spark.network.timeout", "120s"));
+      conf.get("scache.network.timeout", "120s"));
     long defaultTimeoutMs = JavaUtils.timeStringAsSec(
       conf.get(SPARK_NETWORK_IO_CONNECTIONTIMEOUT_KEY, defaultNetworkTimeoutS + "s")) * 1000;
     return (int) defaultTimeoutMs;
@@ -133,7 +133,7 @@ public class TransportConf {
    */
   public int memoryMapBytes() {
     return Ints.checkedCast(JavaUtils.byteStringAsBytes(
-      conf.get("spark.storage.memoryMapThreshold", "2m")));
+      conf.get("scache.storage.memoryMapThreshold", "2m")));
   }
 
   /**
@@ -148,7 +148,7 @@ public class TransportConf {
    * Maximum number of retries when binding to a port before giving up.
    */
   public int portMaxRetries() {
-    return conf.getInt("spark.port.maxRetries", 16);
+    return conf.getInt("scache.port.maxRetries", 16);
   }
 
   /**
@@ -156,14 +156,14 @@ public class TransportConf {
    */
   public int maxSaslEncryptedBlockSize() {
     return Ints.checkedCast(JavaUtils.byteStringAsBytes(
-      conf.get("spark.network.sasl.maxEncryptedBlockSize", "64k")));
+      conf.get("scache.network.sasl.maxEncryptedBlockSize", "64k")));
   }
 
   /**
    * Whether the server should enforce encryption on SASL-authenticated connections.
    */
   public boolean saslServerAlwaysEncrypt() {
-    return conf.getBoolean("spark.network.sasl.serverAlwaysEncrypt", false);
+    return conf.getBoolean("scache.network.sasl.serverAlwaysEncrypt", false);
   }
 
 }

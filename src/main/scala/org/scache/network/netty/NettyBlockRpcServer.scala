@@ -23,12 +23,12 @@ import scala.collection.JavaConverters._
 import scala.language.existentials
 import scala.reflect.ClassTag
 
-import org.scache.internal.Logging
+import org.scache.util.Logging
 import org.scache.network.BlockDataManager
 import org.scache.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.scache.network.client.{RpcResponseCallback, TransportClient}
 import org.scache.network.server.{OneForOneStreamManager, RpcHandler, StreamManager}
-import org.scache.network.shuffle.protocol.{BlockTransferMessage, OpenBlocks, StreamHandle, UploadBlock}
+import org.scache.network.protocol.{BlockTransferMessage, OpenBlocks, StreamHandle, UploadBlock}
 import org.scache.serializer.Serializer
 import org.scache.storage.{BlockId, StorageLevel}
 

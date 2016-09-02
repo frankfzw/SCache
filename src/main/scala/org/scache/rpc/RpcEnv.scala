@@ -22,7 +22,7 @@ import java.nio.channels.ReadableByteChannel
 
 import scala.concurrent.Future
 
-import org.scache.{SecurityManager, SparkConf}
+import org.scache.util.ScacheConf
 import org.scache.rpc.netty.NettyRpcEnvFactory
 import org.scache.util.RpcUtils
 
@@ -37,7 +37,7 @@ private[scache] object RpcEnv {
       name: String,
       host: String,
       port: Int,
-      conf: SparkConf,
+      conf: ScacheConf,
       securityManager: SecurityManager,
       clientMode: Boolean = false): RpcEnv = {
     val config = RpcEnvConfig(conf, name, host, port, securityManager, clientMode)
@@ -55,7 +55,7 @@ private[scache] object RpcEnv {
  *
  * [[RpcEnv]] also provides some methods to retrieve [[RpcEndpointRef]]s given name or uri.
  */
-private[scache] abstract class RpcEnv(conf: SparkConf) {
+private[scache] abstract class RpcEnv(conf: ScacheConf) {
 
   private[scache] val defaultLookupTimeout = RpcUtils.lookupRpcTimeout(conf)
 
@@ -184,7 +184,7 @@ private[scache] trait RpcEnvFileServer {
 }
 
 private[scache] case class RpcEnvConfig(
-    conf: SparkConf,
+    conf: ScacheConf,
     name: String,
     host: String,
     port: Int,

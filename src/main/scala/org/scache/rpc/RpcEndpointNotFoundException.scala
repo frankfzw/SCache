@@ -16,7 +16,6 @@
  */
 package org.scache.rpc
 
-import org.scache.SparkException
 
 private[rpc] class RpcEndpointNotFoundException(uri: String)
-  extends SparkException(s"Cannot find endpoint: $uri")
+  extends Exception(s"Cannot find endpoint: $uri")
