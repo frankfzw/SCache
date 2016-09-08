@@ -283,5 +283,12 @@ private[scache] object Utils extends Logging{
     "%.1f %s".formatLocal(Locale.US, value, unit)
   }
 
+  /**
+   * Return the string to tell how long has passed in milliseconds.
+   */
+  def getUsedTimeMs(startTimeMs: Long): String = {
+    " " + (System.currentTimeMillis - startTimeMs) + " ms"
+  }
+
 
 }

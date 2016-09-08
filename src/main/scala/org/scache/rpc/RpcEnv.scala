@@ -38,9 +38,8 @@ private[scache] object RpcEnv {
       host: String,
       port: Int,
       conf: ScacheConf,
-      securityManager: SecurityManager,
       clientMode: Boolean = false): RpcEnv = {
-    val config = RpcEnvConfig(conf, name, host, port, securityManager, clientMode)
+    val config = RpcEnvConfig(conf, name, host, port, clientMode)
     new NettyRpcEnvFactory().create(config)
   }
 }
@@ -188,5 +187,4 @@ private[scache] case class RpcEnvConfig(
     name: String,
     host: String,
     port: Int,
-    securityManager: SecurityManager,
     clientMode: Boolean)

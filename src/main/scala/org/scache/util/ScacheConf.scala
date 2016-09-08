@@ -62,6 +62,14 @@ class ScacheConf extends Cloneable with Logging {
     }
   }
 
+  def getLong(key: String, default: Long): Long = {
+    if (settings.containsKey(key)) {
+      return settings.get(key).toLong
+    } else {
+      return default
+    }
+  }
+
   def getBoolean(key: String, default: Boolean): Boolean = {
     if (settings.containsKey(key)) {
       return settings.get(key).toBoolean
@@ -120,6 +128,10 @@ class ScacheConf extends Cloneable with Logging {
     getAll.filter { case (k, v) => k.startsWith(avroNamespace) }
       .map { case (k, v) => (k.substring(avroNamespace.length).toLong, v) }
       .toMap
+  }
+
+  def getAppId: String = {
+    settings.get("scache.app.id")
   }
 
 
