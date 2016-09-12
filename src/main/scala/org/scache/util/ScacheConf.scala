@@ -166,6 +166,7 @@ private[scache] object ScacheConf extends Logging {
 
   private var conf: ScacheConf = null
   val scacheHome = System.getenv("SCACHE_HOME")
+  val scacheLocalDir = scacheHome + "/tmp"
 
   private[scache] val DRIVER_IDENTIFIER = "driver"
 }
