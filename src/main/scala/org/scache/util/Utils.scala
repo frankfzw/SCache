@@ -1,7 +1,7 @@
 package org.scache.util
 
 import java.io.{File, IOException}
-import java.net.{URI, BindException}
+import java.net._
 import java.util.{UUID, Locale}
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
@@ -403,6 +403,45 @@ private[scache] object Utils extends Logging{
       case t: Throwable =>
         logError(s"Uncaught exception in thread ${Thread.currentThread().getName}", t)
         throw t
+    }
+  }
+
+  def findLocalInetAddress(): InetAddress = {
+    val defaultIpOverride = System.getenv("SCACHE_LOCAL_IP")
+    if (defaultIpOverride != null) {
+      InetAddress.getByName(defaultIpOverride)
+    } else {
+      val address = InetAddress.getLocalHost
+      if (address.isLoopbackAddress) {
+        // Address resolves to something like 127.0.1.1, which happens on Debian; try to find
+        // a better address using the local network interfaces
+        // getNetworkInterfaces returns ifs in reverse order compared to ifconfig output order
+        // on unix-like system. On windows, it returns in index order.
+        // It's more proper to pick ip address following system output order.
+        val activeNetworkIFs = NetworkInterface.getNetworkInterfaces.asScala.toSeq
+        val reOrderedNetworkIFs = activeNetworkIFs.reverse
+
+        for (ni <- reOrderedNetworkIFs) {
+          val addresses = ni.getInetAddresses.asScala
+            .filterNot(addr => addr.isLinkLocalAddress || addr.isLoopbackAddress).toSeq
+          if (addresses.nonEmpty) {
+            val addr = addresses.find(_.isInstanceOf[Inet4Address]).getOrElse(addresses.head)
+            // because of Inet6Address.toHostName may add interface at the end if it knows about it
+            val strippedAddress = InetAddress.getByAddress(addr.getAddress)
+            // We've found an address that looks reasonable!
+            logWarning("Your hostname, " + InetAddress.getLocalHost.getHostName + " resolves to" +
+              " a loopback address: " + address.getHostAddress + "; using " +
+              strippedAddress.getHostAddress + " instead (on interface " + ni.getName + ")")
+            logWarning("Set SCACHE_LOCAL_IP if you need to bind to another address")
+            return strippedAddress
+          }
+        }
+        logWarning("Your hostname, " + InetAddress.getLocalHost.getHostName + " resolves to" +
+          " a loopback address: " + address.getHostAddress + ", but we couldn't find any" +
+          " external IP address!")
+        logWarning("Set SCACHE_LOCAL_IP if you need to bind to another address")
+      }
+      address
     }
   }
 

@@ -22,7 +22,7 @@ class ScacheConf extends Cloneable with Logging {
 
   ScacheConf.setSingleton(this)
 
-  private[scache] def set(key: String, value: String, slient: Boolean): ScacheConf = {
+  private[scache] def set(key: String, value: String, slient: Boolean = false): ScacheConf = {
     if (key == null) {
       throw new Exception("config null key")
     }

@@ -1,6 +1,6 @@
 name := "SCache"
 
-organization := "org.sjtu"
+organization := "org.scache"
 
 scalaVersion := "2.11.7"
 
@@ -25,3 +25,12 @@ libraryDependencies ++= Seq(
   "org.apache.hadoop" % "hadoop-common" % "2.7.1",
   "org.apache.hadoop" % "hadoop-mapred" % "0.22.0"
 )
+
+
+assemblyMergeStrategy in assembly := {
+  case PathList("org", "apache", xs @ _*) => MergeStrategy.first
+  case PathList("com", "esotericsoftware", xs @ _*) => MergeStrategy.first
+  case x =>
+    val oldStrategy = (assemblyMergeStrategy in assembly).value
+    oldStrategy(x)
+}
