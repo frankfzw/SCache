@@ -49,7 +49,7 @@ private[netty] class NettyRpcEnv(
     host: String) extends RpcEnv(conf) with Logging {
 
   private[netty] val transportConf = ScacheTransportConf.fromScacheConf(
-    conf.clone.set("scache.rpc.io.numConnectionsPerPeer", "1", false),
+    conf.set("scache.rpc.io.numConnectionsPerPeer", "1", false),
     "org/scache/rpc",
     conf.getInt("scache.rpc.io.threads", 0))
 
@@ -331,7 +331,7 @@ private[netty] class NettyRpcEnv(
       if (fileDownloadFactory == null) {
         val module = "files"
         val prefix = "scache.rpc.io."
-        val clone = conf.clone()
+        val clone = conf
 
         // Copy any RPC configuration that is not overridden in the scache.files namespace.
         conf.getAll.foreach { case (key, value) =>

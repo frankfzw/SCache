@@ -5,13 +5,14 @@ package org.scache.util
  */
 
 import java.io.File
+import java.util.NoSuchElementException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 
 import com.typesafe.config.{Config, ConfigFactory}
 import scala.collection.JavaConverters._
 
-class ScacheConf extends Cloneable with Logging {
+class ScacheConf extends Logging {
   private val configPath = ScacheConf.scacheHome + "/conf/scache.conf"
   private val config = ConfigFactory.parseFile(new File(configPath))
   private val settings = new ConcurrentHashMap[String, String]()
@@ -32,7 +33,7 @@ class ScacheConf extends Cloneable with Logging {
     }
 
     if (!slient) {
-      logInfo(s"config set key ${} to value ${}".format(key, value))
+      logInfo(s"config set key ${key} to value ${value}")
     }
     settings.put(key, value)
     this
@@ -51,6 +52,14 @@ class ScacheConf extends Cloneable with Logging {
       return settings.get(key)
     } else {
       return default
+    }
+  }
+
+  def getString(key: String): String = {
+    if (settings.containsKey(key)) {
+      return settings.get(key)
+    } else {
+      throw new NoSuchElementException(key)
     }
   }
 
@@ -135,14 +144,14 @@ class ScacheConf extends Cloneable with Logging {
   }
 
 
-  override def clone(): ScacheConf = {
-    val cloned = new ScacheConf()
-    settings.entrySet().asScala.foreach {
-      e =>
-        cloned.set(e.getKey, e.getValue, true)
-    }
-    cloned
-  }
+  // override def clone(): ScacheConf = {
+  //   val cloned = new ScacheConf()
+  //   settings.entrySet().asScala.foreach {
+  //     e =>
+  //       cloned.set(e.getKey, e.getValue, true)
+  //   }
+  //   cloned
+  // }
 
   //TODO: empty now
   def stop() = {

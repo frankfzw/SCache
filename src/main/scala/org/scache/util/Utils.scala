@@ -68,7 +68,7 @@ private[scache] object Utils extends Logging{
   def timeStringAs(str: String, unit: TimeUnit): Long = {
     val lower = str.toLowerCase.trim
     val m = Pattern.compile("(-?[0-9]+)([a-z]+)?").matcher(lower)
-    if (m.matches()) {
+    if (!m.matches()) {
       throw new Exception("Failed to parse time string " + str)
     }
     val timeValue = m.group(1).toLong
