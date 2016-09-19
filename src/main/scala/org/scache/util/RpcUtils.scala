@@ -21,7 +21,7 @@ private[scache] object RpcUtils {
    */
   def makeDriverRef(name: String, conf: ScacheConf, rpcEnv: RpcEnv): RpcEndpointRef = {
     val driverHost: String = conf.getString("scache.driver.host", "localhost")
-    val driverPort: Int = conf.getInt("scache.driver.port", 7077)
+    val driverPort: Int = conf.getInt("scache.driver.port", 6388)
     checkHost(driverHost, "Expected hostname")
     rpcEnv.setupEndpointRef(RpcAddress(driverHost, driverPort), name)
   }
