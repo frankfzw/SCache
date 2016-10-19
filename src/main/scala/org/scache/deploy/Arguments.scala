@@ -23,9 +23,11 @@ private[deploy] class MasterArguments(args: Array[String], conf: ScacheConf) ext
     port = System.getenv("SCACHE_MASTER_PORT").toInt
   }
 
+  parse(args.toList)
+
   override def parse(args: List[String]): Unit = args match {
     case ("--ip" | "-i") :: value :: tail =>
-      Utils.checkHost(value, "ip is invalid " + value)
+      // Utils.checkHost(value, "ip is invalid " + value)
       host = value
       parse(tail)
 
@@ -36,6 +38,8 @@ private[deploy] class MasterArguments(args: Array[String], conf: ScacheConf) ext
     case ("--local" | "-l") :: value :: tail =>
       isLocal = value.toBoolean
       parse(tail)
+
+    case Nil => // end here
 
     case _ =>
       // scalastyle:off println
@@ -53,10 +57,10 @@ private[deploy] class MasterArguments(args: Array[String], conf: ScacheConf) ext
 
 private[deploy] class ClientArguments(args: Array[String], conf: ScacheConf) extends Arguments {
   var host = sys.env.get("SCACHE_LOCAL_HOSTNAME").getOrElse(Utils.findLocalInetAddress().getHostAddress)
-  private var masterIp = host
+  var masterIp = host
   var isLocal = true
   var port = 5678
-  var masterUrl: RpcAddress = RpcAddress(masterIp, port)
+  var masterPort = 6388
 
   // Check for settings in environment variables
   if (System.getenv("SCACHE_CLIENT_IP") != null) {
@@ -70,13 +74,17 @@ private[deploy] class ClientArguments(args: Array[String], conf: ScacheConf) ext
     port = System.getenv("SCACHE_CLIENT_PORT").toInt
   }
 
+
+  parse(args.toList)
+
+
   override def parse(args: List[String]): Unit = args match {
     case ("--master" | "-m") :: value :: tail =>
-      Utils.checkHost(value, "ip is invalid" + value)
-      masterUrl = RpcAddress.fromURIString(value)
+      // Utils.checkHost(value, "ip is invalid" + value)
+      masterIp = value
       parse(tail)
     case ("--ip" | "-i") :: value :: tail =>
-      Utils.checkHost(value, "ip is invalid " + value)
+      // Utils.checkHost(value, "ip is invalid " + value)
       host = value
       parse(tail)
     case ("--local" | "-l") :: value :: tail =>
@@ -85,6 +93,11 @@ private[deploy] class ClientArguments(args: Array[String], conf: ScacheConf) ext
     case ("--port" | "-p") :: value :: tail =>
       port = value.toInt
       parse(tail)
+
+    case ("--masterPort" | "-mp") :: value :: tail =>
+      masterPort = value.toInt
+      parse(tail)
+    case Nil => // end here
 
     case _ =>
       // scalastyle:off println

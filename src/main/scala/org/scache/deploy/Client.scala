@@ -1,12 +1,12 @@
 package org.scache.deploy
 
-import org.scache.deploy.DeployMessages.{RegisterClientSuccess, RegisterClient}
+import org.scache.deploy.DeployMessages.{RegisterClient, RegisterClientSuccess}
 import org.scache.network.netty.NettyBlockTransferService
-import org.scache.storage.{BlockManager, BlockManagerMasterEndpoint, BlockManagerMaster}
-import org.scache.storage.memory.{UnifiedMemoryManager, StaticMemoryManager, MemoryManager}
-import org.scache.{MapOutputTracker, MapOutputTrackerWorker, MapOutputTrackerMaster}
-import org.scache.rpc.{ThreadSafeRpcEndpoint, RpcEndpointRef, RpcEnv}
-import org.scache.serializer.{SerializerManager, JavaSerializer}
+import org.scache.storage.{BlockManager, BlockManagerMaster, BlockManagerMasterEndpoint}
+import org.scache.storage.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
+import org.scache.{MapOutputTracker, MapOutputTrackerMaster, MapOutputTrackerWorker}
+import org.scache.rpc._
+import org.scache.serializer.{JavaSerializer, SerializerManager}
 import org.scache.util._
 
 import scala.util.{Failure, Success}
@@ -27,7 +27,7 @@ class Client(
   val serializerManager = new SerializerManager(serializer, conf)
   var clientId: Int = -1
 
-  @volatile var master: Option[RpcEndpointRef] = None
+  @volatile var master: RpcEndpointRef = null
 
   val mapOutputTracker = new MapOutputTrackerWorker(conf)
   mapOutputTracker.trackerEndpoint = RpcUtils.makeDriverRef(MapOutputTracker.ENDPOINT_NAME, conf, rpcEnv)
@@ -46,23 +46,28 @@ class Client(
 
   val blockManagerMasterEndpoint = RpcUtils.makeDriverRef(BlockManagerMaster.DRIVER_ENDPOINT_NAME, conf, rpcEnv)
   val blockManagerMaster = new BlockManagerMaster(blockManagerMasterEndpoint, conf, false)
+  var blockManager:BlockManager = null
 
-  val blockManager = new BlockManager(ScacheConf.DRIVER_IDENTIFIER, rpcEnv, blockManagerMaster,
+  logInfo("Client connecting to master " + masterHostname)
+  master = RpcUtils.makeDriverRef("Master", conf, rpcEnv)
+  clientId = master.askWithRetry[Int](RegisterClient(hostname, port, self))
+  blockManager = new BlockManager(clientId.toString, rpcEnv, blockManagerMaster,
     serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
+  logInfo(s"Got ID ${clientId} from master")
 
-  override def onStart(): Unit = {
-    logInfo("Client connecting to master " + masterHostname)
-    rpcEnv.asyncSetupEndpointRefByURI(masterHostname).flatMap { ref =>
-      master = Some(ref)
-      ref.ask[Int](RegisterClient(hostname, port, self))
-    }(ThreadUtils.sameThread).onComplete {
-      case Success(id) =>
-        clientId = id
-        logInfo(s"Got ID ${clientId} from master")
-      case Failure(e) =>
-        logError("Fail to connect master: " + e.getMessage)
-    }(ThreadUtils.sameThread)
-  }
+  // rpcEnv.asyncSetupEndpointRefByURI(masterHostname).flatMap { ref =>
+  //   master = Some(ref)
+  //   ref.ask[Int](RegisterClient(hostname, port, self))
+  // }(ThreadUtils.sameThread).onComplete {
+  //   case Success(id) =>
+  //     clientId = id
+  //     blockManager = new BlockManager(clientId.toString, rpcEnv, blockManagerMaster,
+  //       serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
+  //     logInfo(s"Got ID ${clientId} from master")
+  //   case Failure(e) =>
+  //     logError("Fail to connect master: " + e.getMessage)
+  // }(ThreadUtils.sameThread)
+
 }
 
 object Client extends Logging{
@@ -72,11 +77,14 @@ object Client extends Logging{
 
     conf.set("scache.rpc.askTimeout", "10")
     logInfo("Start Client")
-    conf.set("scache.driver.host", arguements.masterUrl.toScacheURL)
+    conf.set("scache.driver.host", arguements.masterIp)
+
+    val masterRpcAddress = RpcAddress(arguements.masterIp, arguements.masterPort)
 
     val rpcEnv = RpcEnv.create("client", arguements.host, arguements.port, conf)
     val clientEndpoint = rpcEnv.setupEndpoint("Client",
-      new Client(rpcEnv, arguements.host, arguements.masterUrl.toScacheURL, arguements.port, conf)
+      new Client(rpcEnv, arguements.host, RpcEndpointAddress(masterRpcAddress, "Master").toString, arguements.port, conf)
     )
+    rpcEnv.awaitTermination()
   }
 }

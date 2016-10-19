@@ -28,7 +28,9 @@ private[netty] class RpcEndpointVerifier(override val rpcEnv: RpcEnv, dispatcher
   extends RpcEndpoint {
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
-    case RpcEndpointVerifier.CheckExistence(name) => context.reply(dispatcher.verify(name))
+    case RpcEndpointVerifier.CheckExistence(name) =>
+      // println(s"frankfzw: RpcEndpointVerifier receive $name from ${context.senderAddress}, result is ${dispatcher.verify(name)}")
+      context.reply(dispatcher.verify(name))
   }
 }
 

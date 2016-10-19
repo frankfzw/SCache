@@ -126,8 +126,10 @@ private[netty] class NettyRpcEnv(
     val endpointRef = new NettyRpcEndpointRef(conf, addr, this)
     val verifier = new NettyRpcEndpointRef(
       conf, RpcEndpointAddress(addr.rpcAddress, RpcEndpointVerifier.NAME), this)
+    logDebug(s"frankfzw: Verify ${addr.name} on ${addr.rpcAddress.toString}")
     verifier.ask[Boolean](RpcEndpointVerifier.CheckExistence(endpointRef.name)).flatMap { find =>
       if (find) {
+        logDebug(s"frankfzw: Verify ${addr.name} on ${addr.rpcAddress.toString} success")
         Future.successful(endpointRef)
       } else {
         Future.failed(new Exception("url not found: " + uri))
