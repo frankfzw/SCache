@@ -59,16 +59,6 @@ private class Master(
   override def receive: PartialFunction[Any, Unit] = {
     case Heartbeat(id, rpcRef) =>
       logInfo(s"Receive heartbeat from ${id}: ${rpcRef}")
-    case RegisterClient(hostname, port, ref) =>
-      if (hostnameToClientId.contains(hostname)) {
-        logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has registered again")
-        clientIdToInfo.remove(hostnameToClientId(hostname))
-      }
-      val clientId = Master.EXECUTOR_ID_GENERATOR.next
-      val info = new ClientInfo(clientId, hostname, port, ref)
-      hostnameToClientId.getOrElseUpdate(hostname, clientId)
-      clientIdToInfo.getOrElseUpdate(clientId, info)
-      logInfo(s"Register client ${hostname} with id ${clientId}")
     case _ =>
       logError("Empty message received !")
   }
@@ -79,10 +69,13 @@ private class Master(
         logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has registered again")
         clientIdToInfo.remove(hostnameToClientId(hostname))
       }
-      val clientId = Master.EXECUTOR_ID_GENERATOR.next
+      val clientId = Master.CLIENT_ID_GENERATOR.next
       val info = new ClientInfo(clientId, hostname, port, ref)
-      hostnameToClientId.getOrElseUpdate(hostname, clientId)
-      clientIdToInfo.getOrElseUpdate(clientId, info)
+      if (hostnameToClientId.contains(hostname)) {
+        clientIdToInfo -= hostnameToClientId(hostname)
+      }
+      hostnameToClientId.update(hostname, clientId)
+      clientIdToInfo.update(clientId, info)
       logInfo(s"Register client ${hostname} with id ${clientId}")
       context.reply(clientId)
     case _ =>
@@ -93,7 +86,7 @@ private class Master(
 }
 
 object Master extends Logging {
-  private val EXECUTOR_ID_GENERATOR = new IdGenerator
+  private val CLIENT_ID_GENERATOR = new IdGenerator
 
   def main(args: Array[String]): Unit = {
     logInfo("Start Master")
@@ -110,6 +103,4 @@ object Master extends Logging {
   }
 }
 
-private[deploy] class ClientInfo(val id: Int, val host: String, val port: Int, val ref: RpcEndpointRef) extends Serializable {
-
-}
+private[deploy] class ClientInfo(val id: Int, val host: String, val port: Int, val ref: RpcEndpointRef) extends Serializable
