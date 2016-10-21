@@ -86,7 +86,7 @@ private class Master(
   }
 
 
-  def runTest: Unit = {
+  def runTest(): Unit = {
     val blockIda1 = new ScacheBlockId("test", 1, 1, 1, 1)
     val blockIda2 = new ScacheBlockId("test", 1, 1, 1, 2)
     val blockIda3 = new ScacheBlockId("test", 1, 1, 2, 1)
