@@ -54,6 +54,7 @@ class Client(
   blockManager = new BlockManager(clientId.toString, rpcEnv, blockManagerMaster,
     serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
   logInfo(s"Got ID ${clientId} from master")
+  blockManager.initialize()
 
   // rpcEnv.asyncSetupEndpointRefByURI(masterHostname).flatMap { ref =>
   //   master = Some(ref)

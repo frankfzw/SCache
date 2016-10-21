@@ -4,15 +4,16 @@ package org.scache.deploy
  * Created by frankfzw on 16-8-4.
  */
 
-import org.scache.deploy.DeployMessages.{RegisterClient, Heartbeat}
+import org.scache.deploy.DeployMessages.{Heartbeat, RegisterClient}
+import org.scache.io.ChunkedByteBuffer
 import org.scache.network.netty.NettyBlockTransferService
 import org.scache.scheduler.LiveListenerBus
-import org.scache.storage.memory.{UnifiedMemoryManager, StaticMemoryManager, MemoryManager}
-import org.scache.{MapOutputTrackerMasterEndpoint, MapOutputTracker, MapOutputTrackerMaster}
+import org.scache.storage.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
+import org.scache.{MapOutputTracker, MapOutputTrackerMaster, MapOutputTrackerMasterEndpoint}
 import org.scache.rpc._
-import org.scache.serializer.{SerializerManager, JavaSerializer}
-import org.scache.storage.{BlockManager, BlockManagerMasterEndpoint, BlockManagerMaster}
-import org.scache.util.{IdGenerator, RpcUtils, Logging, ScacheConf}
+import org.scache.serializer.{JavaSerializer, SerializerManager}
+import org.scache.storage._
+import org.scache.util.{IdGenerator, Logging, RpcUtils, ScacheConf}
 
 import scala.collection.mutable
 
@@ -56,6 +57,8 @@ private class Master(
   val blockManager = new BlockManager(ScacheConf.DRIVER_IDENTIFIER, rpcEnv, blockManagerMaster,
     serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
 
+  blockManager.initialize()
+
   override def receive: PartialFunction[Any, Unit] = {
     case Heartbeat(id, rpcRef) =>
       logInfo(s"Receive heartbeat from ${id}: ${rpcRef}")
@@ -80,6 +83,39 @@ private class Master(
       context.reply(clientId)
     case _ =>
       logError("Empty message received !")
+  }
+
+
+  def runTest: Unit = {
+    val blockIda1 = new ScacheBlockId("test", 1, 1, 1, 1)
+    val blockIda2 = new ScacheBlockId("test", 1, 1, 1, 2)
+    val blockIda3 = new ScacheBlockId("test", 1, 1, 2, 1)
+    val a1 = new Array[Byte](4000)
+    val a2 = new Array[Byte](4000)
+    val a3 = new Array[Byte](4000)
+
+    // Putting a1, a2  and a3 in memory and telling master only about a1 and a2
+    blockManager.putSingle(blockIda1, a1, StorageLevel.MEMORY_ONLY)
+    blockManager.putSingle(blockIda2, a2, StorageLevel.MEMORY_ONLY)
+    blockManager.putSingle(blockIda3, a3, StorageLevel.MEMORY_ONLY, tellMaster = false)
+
+    // Checking whether blocks are in memory
+    assert(blockManager.getSingle(blockIda1).isDefined, "a1 was not in blockManager")
+    assert(blockManager.getSingle(blockIda2).isDefined, "a2 was not in blockManager")
+    assert(blockManager.getSingle(blockIda3).isDefined, "a3 was not in blockManager")
+
+    // Checking whether master knows about the blocks or not
+    assert(blockManagerMaster.getLocations(blockIda1).size > 0, "master was not told about a1")
+    assert(blockManagerMaster.getLocations(blockIda2).size > 0, "master was not told about a2")
+    assert(blockManagerMaster.getLocations(blockIda3).size == 0, "master was told about a3")
+
+    // Drop a1 and a2 from memory; this should be reported back to the master
+    blockManager.dropFromMemoryTest(blockIda1)
+    blockManager.dropFromMemoryTest(blockIda2)
+    assert(blockManager.getSingle(blockIda1) == None, "a1 not removed from blockManager")
+    assert(blockManager.getSingle(blockIda2) == None, "a2 not removed from blockManager")
+    assert(blockManagerMaster.getLocations(blockIda1).size == 0, "master did not remove a1")
+    assert(blockManagerMaster.getLocations(blockIda2).size == 0, "master did not remove a2")
   }
 
 

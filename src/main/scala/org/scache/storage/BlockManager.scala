@@ -158,7 +158,7 @@ private[scache] class BlockManager(
    * BlockManagerMaster, starts the BlockManagerWorker endpoint, and registers with a local shuffle
    * service if configured.
    */
-  def initialize(appId: String): Unit = {
+  def initialize(): Unit = {
     blockTransferService.init(this)
     // shuffleClient.init(this)
 
@@ -1203,6 +1203,11 @@ private[scache] class BlockManager(
       level: StorageLevel,
       tellMaster: Boolean = true): Boolean = {
     putIterator(blockId, Iterator(value), level, tellMaster)
+  }
+
+  // test function
+  def dropFromMemoryTest[T: ClassTag](blockId: BlockId): StorageLevel = {
+    dropFromMemory[T](blockId, null: () => Either[Array[T], ChunkedByteBuffer])
   }
 
   /**
