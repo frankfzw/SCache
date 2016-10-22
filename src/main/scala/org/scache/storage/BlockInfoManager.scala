@@ -247,9 +247,9 @@ private[scache] class BlockInfoManager extends Logging {
   def assertBlockIsLockedForWriting(blockId: BlockId): BlockInfo = synchronized {
     infos.get(blockId) match {
       case Some(info) =>
-        if (info.writerTask != currentTaskAttemptId) {
+        if ((info.writerTask != currentTaskAttemptId) && (info.writerTask != BlockInfo.NO_WRITER)) {
           throw new Exception(
-            s"Task $currentTaskAttemptId has not locked block $blockId for writing")
+            s"Task $currentTaskAttemptId has not locked block $blockId for writing, writing task is ${info.writerTask}")
         } else {
           info
         }

@@ -58,6 +58,7 @@ private class Master(
     serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
 
   blockManager.initialize()
+  runTest()
 
   override def receive: PartialFunction[Any, Unit] = {
     case Heartbeat(id, rpcRef) =>
