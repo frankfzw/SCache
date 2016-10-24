@@ -602,11 +602,13 @@ private[scache] class BlockManager(
       logInfo(s"Found block $blockId locally")
       return local
     }
+    logInfo("I'm here")
     val remote = getRemoteValues(blockId)
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
       return remote
     }
+    logInfo(s"$blockId doesn't exists")
     None
   }
 
@@ -1230,7 +1232,7 @@ private[scache] class BlockManager(
     val level = info.level
 
     // Drop to disk, if storage level requires
-    if (level.useDisk && !diskStore.contains(blockId)) {
+    if (!diskStore.contains(blockId)) {
       logInfo(s"Writing block $blockId to disk")
       data() match {
         case Left(elements) =>

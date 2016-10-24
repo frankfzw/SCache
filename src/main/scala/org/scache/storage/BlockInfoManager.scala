@@ -93,7 +93,7 @@ private[scache] object BlockInfo {
   /**
    * Special task attempt id constant used to mark a block's write lock as being unlocked.
    */
-  val NO_WRITER: Long = -1
+  val NO_WRITER: Long = -1024
 
   /**
    * Special task attempt id constant used to mark a block's write lock as being held by
@@ -247,7 +247,7 @@ private[scache] class BlockInfoManager extends Logging {
   def assertBlockIsLockedForWriting(blockId: BlockId): BlockInfo = synchronized {
     infos.get(blockId) match {
       case Some(info) =>
-        if ((info.writerTask != currentTaskAttemptId) && (info.writerTask != BlockInfo.NO_WRITER)) {
+        if (info.writerTask != BlockInfo.NO_WRITER) {
           throw new Exception(
             s"Task $currentTaskAttemptId has not locked block $blockId for writing, writing task is ${info.writerTask}")
         } else {
