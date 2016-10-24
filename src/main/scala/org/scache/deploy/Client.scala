@@ -55,6 +55,7 @@ class Client(
     serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
   logInfo(s"Got ID ${clientId} from master")
   blockManager.initialize()
+  runTest()
 
   // rpcEnv.asyncSetupEndpointRefByURI(masterHostname).flatMap { ref =>
   //   master = Some(ref)
