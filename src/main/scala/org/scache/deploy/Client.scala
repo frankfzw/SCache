@@ -2,7 +2,7 @@ package org.scache.deploy
 
 import org.scache.deploy.DeployMessages.{RegisterClient, RegisterClientSuccess}
 import org.scache.network.netty.NettyBlockTransferService
-import org.scache.storage.{BlockManager, BlockManagerMaster, BlockManagerMasterEndpoint}
+import org.scache.storage.{ScacheBlockId, BlockManager, BlockManagerMaster, BlockManagerMasterEndpoint}
 import org.scache.storage.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
 import org.scache.{MapOutputTracker, MapOutputTrackerMaster, MapOutputTrackerWorker}
 import org.scache.rpc._
@@ -68,6 +68,23 @@ class Client(
   //   case Failure(e) =>
   //     logError("Fail to connect master: " + e.getMessage)
   // }(ThreadUtils.sameThread)
+  def runTest(): Unit = {
+    val blockIda1 = new ScacheBlockId("test", 1, 1, 1, 1)
+    val blockIda2 = new ScacheBlockId("test", 1, 1, 1, 2)
+    val blockIda3 = new ScacheBlockId("test", 1, 1, 2, 1)
+
+    // Checking whether master knows about the blocks or not
+    assert(blockManagerMaster.getLocations(blockIda1).size > 0, "master was not told about a1")
+    assert(blockManagerMaster.getLocations(blockIda2).size > 0, "master was not told about a2")
+    assert(blockManagerMaster.getLocations(blockIda3).size == 0, "master was told about a3")
+
+    // Try to fetch remote blocks
+    assert(blockManager.getRemoteBytes(blockIda1).size > 0, "fail to get a1")
+    assert(blockManager.getRemoteBytes(blockIda2).size > 0, "fail to get a2")
+
+
+
+  }
 
 }
 
