@@ -602,13 +602,11 @@ private[scache] class BlockManager(
       logInfo(s"Found block $blockId locally")
       return local
     }
-    logInfo("I'm here")
     val remote = getRemoteValues(blockId)
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
       return remote
     }
-    logInfo(s"$blockId doesn't exists")
     None
   }
 
@@ -616,21 +614,23 @@ private[scache] class BlockManager(
    * Downgrades an exclusive write lock to a shared read lock.
    */
   def downgradeLock(blockId: BlockId): Unit = {
-    blockInfoManager.downgradeLock(blockId)
+    // blockInfoManager.downgradeLock(blockId)
   }
 
   /**
    * Release a lock on the given block.
    */
   def releaseLock(blockId: BlockId): Unit = {
-    blockInfoManager.unlock(blockId)
+    if (!blockInfoManager.unlockWrite(blockId)) {
+      blockInfoManager.unlockRead(blockId)
+    }
   }
 
   /**
    * Registers a task with the BlockManager in order to initialize per-task bookkeeping structures.
    */
   def registerTask(taskAttemptId: Long): Unit = {
-    blockInfoManager.registerTask(taskAttemptId)
+    // blockInfoManager.registerTask(taskAttemptId)
   }
 
   /**
@@ -638,9 +638,9 @@ private[scache] class BlockManager(
    *
    * @return the blocks whose locks were released.
    */
-  def releaseAllLocksForTask(taskAttemptId: Long): Seq[BlockId] = {
-    blockInfoManager.releaseAllLocksForTask(taskAttemptId)
-  }
+  // def releaseAllLocksForTask(taskAttemptId: Long): Seq[BlockId] = {
+  //   blockInfoManager.releaseAllLocksForTask(taskAttemptId)
+  // }
 
   /**
    * Retrieve the given block if it exists, otherwise call the provided `makeIterator` method
@@ -864,10 +864,9 @@ private[scache] class BlockManager(
       res
     } finally {
       if (blockWasSuccessfullyStored) {
+        blockInfoManager.unlockWrite(blockId)
         if (keepReadLock) {
-          blockInfoManager.downgradeLock(blockId)
-        } else {
-          blockInfoManager.unlock(blockId)
+          blockInfoManager.lockForReading(blockId)
         }
       } else {
         blockInfoManager.removeBlock(blockId)
@@ -1227,12 +1226,12 @@ private[scache] class BlockManager(
       blockId: BlockId,
       data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
     logInfo(s"Dropping block $blockId from memory")
-    val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
+    val info = blockInfoManager.assertExistence(blockId)
     var blockIsUpdated = false
     val level = info.level
 
     // Drop to disk, if storage level requires
-    if (!diskStore.contains(blockId)) {
+    if (level.useDisk && !diskStore.contains(blockId)) {
       logInfo(s"Writing block $blockId to disk")
       data() match {
         case Left(elements) =>
