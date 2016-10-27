@@ -88,9 +88,9 @@ private class Master(
 
 
   def runTest(): Unit = {
-    val blockIda1 = new ScacheBlockId("test", 1, 1, 1, 1)
-    val blockIda2 = new ScacheBlockId("test", 1, 1, 1, 2)
-    val blockIda3 = new ScacheBlockId("test", 1, 1, 2, 1)
+    val blockIda1 = new ScacheBlockId("scache", 1, 1, 1, 1)
+    val blockIda2 = new ScacheBlockId("scache", 1, 1, 1, 2)
+    val blockIda3 = new ScacheBlockId("scache", 1, 1, 2, 1)
     val a1 = new Array[Byte](4000)
     val a2 = new Array[Byte](4000)
     val a3 = new Array[Byte](4000)
@@ -117,6 +117,13 @@ private class Master(
     assert(blockManager.getSingle(blockIda2) != None, "a2 is removed from blockManager")
     assert(blockManagerMaster.getLocations(blockIda1).size != 0, "master removed a1")
     assert(blockManagerMaster.getLocations(blockIda2).size != 0, "master removed a2")
+
+    blockManager.getLocalBytes(blockIda1) match {
+      case Some(buffer) =>
+        logInfo(s"The size of ${blockIda1} is ${buffer.size}")
+      case None =>
+        logError(s"Wrong fetch result")
+    }
   }
 
 
@@ -130,6 +137,7 @@ object Master extends Logging {
     val conf = new ScacheConf()
     val SYSTEM_NAME = "scache.master"
     val arguments = new MasterArguments(args, conf)
+    conf.set("scache.app.id", "test")
     val rpcEnv = RpcEnv.create(SYSTEM_NAME, arguments.host, arguments.port, conf)
     val masterEndpoint = rpcEnv.setupEndpoint("Master",
       new Master(rpcEnv, arguments.host, conf, true, arguments.isLocal))

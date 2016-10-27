@@ -70,9 +70,9 @@ class Client(
   //     logError("Fail to connect master: " + e.getMessage)
   // }(ThreadUtils.sameThread)
   def runTest(): Unit = {
-    val blockIda1 = new ScacheBlockId("test", 1, 1, 1, 1)
-    val blockIda2 = new ScacheBlockId("test", 1, 1, 1, 2)
-    val blockIda3 = new ScacheBlockId("test", 1, 1, 2, 1)
+    val blockIda1 = new ScacheBlockId("scache", 1, 1, 1, 1)
+    val blockIda2 = new ScacheBlockId("scache", 1, 1, 1, 2)
+    val blockIda3 = new ScacheBlockId("scache", 1, 1, 2, 1)
 
     // Checking whether master knows about the blocks or not
     assert(blockManagerMaster.getLocations(blockIda1).size > 0, "master was not told about a1")
@@ -83,8 +83,12 @@ class Client(
     assert(blockManager.getRemoteBytes(blockIda1).size > 0, "fail to get a1")
     assert(blockManager.getRemoteBytes(blockIda2).size > 0, "fail to get a2")
 
-
-
+    blockManager.getLocalBytes(blockIda1) match {
+      case Some(buffer) =>
+        logInfo(s"The size of ${blockIda1} is ${buffer.size}")
+      case None =>
+        logError(s"Wrong fetch result")
+    }
   }
 
 }
@@ -97,6 +101,7 @@ object Client extends Logging{
     conf.set("scache.rpc.askTimeout", "10")
     logInfo("Start Client")
     conf.set("scache.driver.host", arguements.masterIp)
+    conf.set("scache.app.id", "test")
 
     val masterRpcAddress = RpcAddress(arguements.masterIp, arguements.masterPort)
 
