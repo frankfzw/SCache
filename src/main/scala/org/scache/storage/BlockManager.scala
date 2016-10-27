@@ -1207,8 +1207,8 @@ private[scache] class BlockManager(
   }
 
   // test function
-  def dropFromMemoryTest[T: ClassTag](blockId: BlockId): StorageLevel = {
-    dropFromMemory[T](blockId, null: () => Either[Array[T], ChunkedByteBuffer])
+  def dropFromMemoryTest[T: ClassTag](blockId: BlockId, data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
+    dropFromMemory[T](blockId, data)
   }
 
   /**
@@ -1231,7 +1231,7 @@ private[scache] class BlockManager(
     val level = info.level
 
     // Drop to disk, if storage level requires
-    if (level.useDisk && !diskStore.contains(blockId)) {
+    if (!diskStore.contains(blockId)) {
       logInfo(s"Writing block $blockId to disk")
       data() match {
         case Left(elements) =>
@@ -1246,6 +1246,8 @@ private[scache] class BlockManager(
       }
       blockIsUpdated = true
     }
+    // update storage level
+    info.level = StorageLevel.DISK_ONLY
 
     // Actually drop from memory store
     val droppedMemorySize =

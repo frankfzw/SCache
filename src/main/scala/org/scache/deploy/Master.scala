@@ -111,12 +111,12 @@ private class Master(
     assert(blockManagerMaster.getLocations(blockIda3).size == 0, "master was told about a3")
 
     // Drop a1 and a2 from memory; this should be reported back to the master
-    blockManager.dropFromMemoryTest(blockIda1)
-    blockManager.dropFromMemoryTest(blockIda2)
-    assert(blockManager.getSingle(blockIda1) == None, "a1 not removed from blockManager")
-    assert(blockManager.getSingle(blockIda2) == None, "a2 not removed from blockManager")
-    assert(blockManagerMaster.getLocations(blockIda1).size == 0, "master did not remove a1")
-    assert(blockManagerMaster.getLocations(blockIda2).size == 0, "master did not remove a2")
+    assert(blockManager.dropFromMemoryTest(blockIda1, () => Left(a1)) == StorageLevel.DISK_ONLY, "a1 is not drop into disk")
+    assert(blockManager.dropFromMemoryTest(blockIda2, () => Left(a2)) == StorageLevel.DISK_ONLY, "a2 is not drop into disk")
+    assert(blockManager.getSingle(blockIda1) != None, "a1 is removed from blockManager")
+    assert(blockManager.getSingle(blockIda2) != None, "a2 is removed from blockManager")
+    assert(blockManagerMaster.getLocations(blockIda1).size != 0, "master removed a1")
+    assert(blockManagerMaster.getLocations(blockIda2).size != 0, "master removed a2")
   }
 
 

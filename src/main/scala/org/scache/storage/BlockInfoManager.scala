@@ -39,7 +39,7 @@ import scala.collection.concurrent.TrieMap
  *                   is true for most blocks, but is false for broadcast blocks.
  */
 private[scache] class BlockInfo(
-    val level: StorageLevel,
+    var level: StorageLevel,
     val classTag: ClassTag[_],
     val tellMaster: Boolean) {
 
@@ -181,19 +181,14 @@ private[scache] class BlockInfoManager extends Logging {
     */
   def lockForReading(blockId: BlockId, blocking: Boolean = true): Option[BlockInfo] = {
     logTrace(s"Trying to acquire read lock for $blockId")
-    do {
-      infos.get(blockId) match {
-        case None => return None
-        case Some(info) =>
-          if (info.writerTask == BlockInfo.NON_TASK_WRITER) {
-            readLocksByBlockId(blockId).incrementAndGet()
-            return Some(info)
-          }
-      }
-      if (blocking) {
-        wait()
-      }
-    } while (blocking)
+    infos.get(blockId) match {
+      case None => return None
+      case Some(info) =>
+        if (info.writerTask == BlockInfo.NON_TASK_WRITER) {
+          readLocksByBlockId(blockId).incrementAndGet()
+          return Some(info)
+        }
+    }
     None
   }
 
@@ -213,20 +208,17 @@ private[scache] class BlockInfoManager extends Logging {
       blockId: BlockId,
       blocking: Boolean = true): Option[BlockInfo] = {
     logTrace(s"Task $currentTaskAttemptId trying to acquire write lock for $blockId")
-    do {
-      infos.get(blockId) match {
-        case None => return None
-        case Some(info) =>
-          if (readLocksByBlockId(blockId).get() == 0) synchronized {
+    infos.get(blockId) match {
+      case None => return None
+      case Some(info) =>
+        if (readLocksByBlockId(blockId).get() == 0) synchronized {
+          if (info.writerTask == BlockInfo.NON_TASK_WRITER) {
             info.writerTask = BlockInfo.HAS_WRITER
             logTrace(s"Acquired write lock for $blockId")
             return Some(info)
           }
-      }
-      if (blocking) {
-        wait()
-      }
-    } while (blocking)
+        }
+    }
     None
   }
 
@@ -286,24 +278,22 @@ private[scache] class BlockInfoManager extends Logging {
       case None =>
         throw new IllegalStateException(s"Block $blockId not found in lock table")
     }
-    notifyAll()
     true
   }
 
-  def unlockWrite(blockId: BlockId): Boolean = synchronized {
+  def unlockWrite(blockId: BlockId): Boolean = {
     logTrace(s"releasing lock for $blockId")
     val info = get(blockId).getOrElse {
       throw new IllegalStateException(s"Block $blockId not found")
     }
-    if (info.writerTask == BlockInfo.HAS_WRITER) {
-      info.writerTask = BlockInfo.NON_TASK_WRITER
-      notifyAll()
-      true
-    } else {
-      notifyAll()
-      false
+    synchronized {
+      if (info.writerTask == BlockInfo.HAS_WRITER) {
+        info.writerTask = BlockInfo.NON_TASK_WRITER
+        true
+      } else {
+        false
+      }
     }
-
   }
   /**
    * Attempt to acquire the appropriate lock for writing a new block.
