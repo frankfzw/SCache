@@ -1,14 +1,22 @@
 package org.scache.deploy
 
-import org.scache.deploy.DeployMessages.{RegisterClient, RegisterClientSuccess}
+import java.io.File
+import java.lang.Exception
+import java.nio.channels.FileChannel
+import java.nio.channels.FileChannel.MapMode
+import java.nio.file.StandardOpenOption
+
+import org.scache.deploy.DeployMessages.{PutBlock, RegisterClient, RegisterClientSuccess}
 import org.scache.network.netty.NettyBlockTransferService
-import org.scache.storage.{ScacheBlockId, BlockManager, BlockManagerMaster, BlockManagerMasterEndpoint}
+import org.scache.storage._
 import org.scache.storage.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
 import org.scache.{MapOutputTracker, MapOutputTrackerMaster, MapOutputTrackerWorker}
 import org.scache.rpc._
 import org.scache.serializer.{JavaSerializer, SerializerManager}
 import org.scache.util._
 
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.Exception
 import scala.util.{Failure, Success}
 
 /**
@@ -55,7 +63,11 @@ class Client(
     serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
   logInfo(s"Got ID ${clientId} from master")
   blockManager.initialize()
-  runTest()
+
+  // create the future context for client
+  private val futureExecutionContext = ExecutionContext.fromExecutorService(
+    ThreadUtils.newDaemonCachedThreadPool("client-future", 128))
+  // runTest()
 
   // rpcEnv.asyncSetupEndpointRefByURI(masterHostname).flatMap { ref =>
   //   master = Some(ref)
@@ -69,6 +81,40 @@ class Client(
   //   case Failure(e) =>
   //     logError("Fail to connect master: " + e.getMessage)
   // }(ThreadUtils.sameThread)
+  override def receive: PartialFunction[Any, Unit] = {
+    case PutBlock(blockId, size) =>
+      readBlockFromDaemon(blockId, size)
+    case _ =>
+      logError("Empty message received !")
+  }
+
+  override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+
+    case _ =>
+      logError("Empty message received !")
+  }
+
+  def readBlockFromDaemon(blockId: BlockId, size: Int): Unit = {
+    Future {
+      try {
+        val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
+        val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+        val buffer = channel.map(MapMode.READ_WRITE, 0, size)
+        // close the channel and delete the tmp file
+        val data = new Array[Byte](size)
+        buffer.get(data)
+        blockManager.putSingle(blockId, data, StorageLevel.MEMORY_ONLY)
+        logDebug(s"Put block $blockId with size $size successfully")
+        channel.close()
+      } catch {
+        case e: Exception =>
+          logError(s"Copy block $blockId error, ${e.getMessage}")
+      }
+
+    }(futureExecutionContext)
+
+  }
+
   def runTest(): Unit = {
     val blockIda1 = new ScacheBlockId("scache", 1, 1, 1, 1)
     val blockIda2 = new ScacheBlockId("scache", 1, 1, 1, 2)
