@@ -2,6 +2,7 @@ package org.scache.deploy
 
 import java.io.File
 import java.lang.Exception
+import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.FileChannel.MapMode
 import java.nio.file.StandardOpenOption
@@ -103,6 +104,7 @@ class Client(
         // close the channel and delete the tmp file
         val data = new Array[Byte](size)
         buffer.get(data)
+        logDebug(s"Get block ${blockId} with $size, hash code: ${data.toSeq.hashCode()}")
         blockManager.putSingle(blockId, data, StorageLevel.MEMORY_ONLY)
         logDebug(s"Put block $blockId with size $size successfully")
         channel.close()

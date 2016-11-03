@@ -44,7 +44,7 @@ object Daemon extends Logging {
 
   def putBlock(appId: String, jobId: Int, shuffleId: Int, mapId: Int, reduceId: Int, data: Array[Byte]): Unit = {
     val blockId = new ScacheBlockId(appId, jobId, shuffleId, mapId, reduceId)
-    logDebug(s"Start copying block $blockId with size ${data.size}")
+    logDebug(s"Start copying block $blockId with size ${data.size}, hash code: ${data.toSeq.hashCode()}")
     val startTime = System.currentTimeMillis()
     val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
     val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
