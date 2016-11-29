@@ -16,19 +16,16 @@ import org.scache.util._
   */
 
 
-object Daemon extends Logging {
-  var clientRef: RpcEndpointRef = null
-  var conf: ScacheConf = null
+class Daemon(platform: String) extends Logging {
+
+  def this() {
+    this("test")
+  }
+
+  crateEnv(platform)
 
   def main(args: Array[String]): Unit = {
-    conf = new ScacheConf()
-    logInfo("Start Daemon")
-    val localIP = Utils.findLocalInetAddress().getHostAddress
-    val rpcEnv = RpcEnv.create("deameon", localIP, 12345, conf)
-
-    val clientRpcAddress = RpcAddress(localIP, 5678)
-    clientRef = rpcEnv.setupEndpointRef(clientRpcAddress, "Client")
-
+    val test = new Daemon()
     val block = Array(1, 2, 3, 4)
     val stream = new ByteArrayOutputStream()
     val oos = new ObjectOutputStream(stream)
@@ -37,10 +34,9 @@ object Daemon extends Logging {
     }
     oos.close()
     val byteBuf = stream.toByteArray
-    putBlock("scache", 2, 2, 2, 2, byteBuf)
-
-    rpcEnv.awaitTermination()
+    test.putBlock("scache", 2, 2, 2, 2, byteBuf)
   }
+
 
   def putBlock(appId: String, jobId: Int, shuffleId: Int, mapId: Int, reduceId: Int, data: Array[Byte]): Unit = {
     val blockId = new ScacheBlockId(appId, jobId, shuffleId, mapId, reduceId)
@@ -51,8 +47,42 @@ object Daemon extends Logging {
     val buf = channel.map(MapMode.READ_WRITE, 0, data.size)
     buf.put(data, 0, data.size)
     logDebug(s"Writing block $blockId to buffer with size ${data.size}")
-    clientRef.send(PutBlock(blockId, data.size))
+    Daemon.clientRef.send(PutBlock(blockId, data.size))
     val endTime = System.currentTimeMillis()
     logDebug(s"Copy block $blockId to SCache in ${endTime - startTime} ms")
   }
+
+  private[scache] def crateEnv(platform: String): Unit = {
+    if (Daemon.clientRef == null) {
+      var t: Thread = null
+      Daemon.initLock.synchronized {
+        if (Daemon.clientRef == null) {
+          t = new Thread {
+            override def run() = {
+              Daemon.conf = new ScacheConf()
+              logInfo("Start Daemon")
+              val localIP = Utils.findLocalInetAddress().getHostAddress
+              val rpcEnv = RpcEnv.create(s"${platform}_deameon", localIP, 12345, Daemon.conf)
+
+              val clientRpcAddress = RpcAddress(localIP, 5678)
+              Daemon.clientRef = rpcEnv.setupEndpointRef(clientRpcAddress, "Client")
+              rpcEnv.awaitTermination()
+            }
+          }
+        }
+      }
+      if (t != null) {
+        Daemon.tid = t.getId
+        t.start()
+      }
+    }
+  }
+
+}
+
+private[scache] object Daemon extends Logging{
+  val initLock = new Object
+  @volatile var clientRef: RpcEndpointRef = null
+  var conf: ScacheConf = null
+  var tid: Long = -1
 }
