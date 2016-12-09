@@ -12,16 +12,35 @@ import java.util.concurrent.ConcurrentHashMap
 import com.typesafe.config.{Config, ConfigFactory}
 import scala.collection.JavaConverters._
 
-class ScacheConf extends Logging {
-  private val configPath = ScacheConf.scacheHome + "/conf/scache.conf"
-  private val config = ConfigFactory.parseFile(new File(configPath))
-  private val settings = new ConcurrentHashMap[String, String]()
+class ScacheConf(home: String) extends Logging {
 
-  for (e <- config.entrySet().asScala) {
-    settings.put(e.getKey, e.getValue.toString)
+  val settings = new ConcurrentHashMap[String, String]()
+  private def _conf: ScacheConf = {
+    if (ScacheConf.conf == null) {
+      ScacheConf.lock synchronized {
+        if (ScacheConf.conf == null) {
+          if (home == null) {
+            logError(s"SCACHE_HOME is not set correctly")
+            throw new Exception(s"SCACHE_HOME is not set correctly")
+          }
+          val configPath = home + "/conf/scache.conf"
+          val config = ConfigFactory.parseFile(new File(configPath))
+          for (e <- config.entrySet().asScala) {
+            settings.put(e.getKey, e.getValue.toString)
+          }
+          ScacheConf.conf = this
+          ScacheConf.scacheHome = home
+        }
+      }
+    }
+    ScacheConf.conf
   }
 
-  ScacheConf.setSingleton(this)
+  def this() {
+    this(sys.env.get("SCACHE_HOME").getOrElse("/home/spark/SCache"))
+  }
+
+
 
   private[scache] def set(key: String, value: String, slient: Boolean = false): ScacheConf = {
     if (key == null) {
@@ -35,84 +54,84 @@ class ScacheConf extends Logging {
     if (!slient) {
       logInfo(s"config set key ${key} to value ${value}")
     }
-    settings.put(key, value)
+    _conf.settings.put(key, value)
     this
   }
 
   def getInt(key: String, default: Int): Int = {
-    if (settings.containsKey(key)) {
-      return settings.get(key).toInt
+    if (_conf.settings.containsKey(key)) {
+      return _conf.settings.get(key).toInt
     } else {
       return default
     }
   }
 
   def getString(key: String, default: String): String = {
-    if (settings.containsKey(key)) {
-      return settings.get(key)
+    if (_conf.settings.containsKey(key)) {
+      return _conf.settings.get(key)
     } else {
       return default
     }
   }
 
   def getString(key: String): String = {
-    if (settings.containsKey(key)) {
-      return settings.get(key)
+    if (_conf.settings.containsKey(key)) {
+      return _conf.settings.get(key)
     } else {
       throw new NoSuchElementException(key)
     }
   }
 
   def getDouble(key: String, default: Double): Double = {
-    if (settings.containsKey(key)) {
-      return settings.get(key).toDouble
+    if (_conf.settings.containsKey(key)) {
+      return _conf.settings.get(key).toDouble
     } else {
       return default
     }
   }
 
   def getLong(key: String, default: Long): Long = {
-    if (settings.containsKey(key)) {
-      return settings.get(key).toLong
+    if (_conf.settings.containsKey(key)) {
+      return _conf.settings.get(key).toLong
     } else {
       return default
     }
   }
 
   def getBoolean(key: String, default: Boolean): Boolean = {
-    if (settings.containsKey(key)) {
-      return settings.get(key).toBoolean
+    if (_conf.settings.containsKey(key)) {
+      return _conf.settings.get(key).toBoolean
     } else {
       return default
     }
   }
 
   def getTimeAsMs(key: String, default: String): Long = {
-    if (settings.containsKey(key)) {
-      return Utils.timeStringAs(settings.get(key), TimeUnit.MILLISECONDS)
+    if (_conf.settings.containsKey(key)) {
+      return Utils.timeStringAs(_conf.settings.get(key), TimeUnit.MILLISECONDS)
     } else {
       return Utils.timeStringAs(default, TimeUnit.MILLISECONDS)
     }
   }
 
   def getTimeAsSeconds(key: String, default: String): Long = {
-    if (settings.containsKey(key)) {
-      return Utils.timeStringAs(settings.get(key), TimeUnit.SECONDS)
+    if (_conf.settings.containsKey(key)) {
+      return Utils.timeStringAs(_conf.settings.get(key), TimeUnit.SECONDS)
     } else {
       return Utils.timeStringAs(default, TimeUnit.SECONDS)
     }
   }
 
   def getSizeAsBytes(key: String, defaultValue: String): Long = {
-    if (settings.containsKey(key)) {
-      return Utils.byteStringAsBytes(settings.get(key))
+    if (_conf.settings.containsKey(key)) {
+      return Utils.byteStringAsBytes(_conf.settings.get(key))
     } else {
       return Utils.byteStringAsBytes(defaultValue)
     }
   }
 
   def getSizeAsKb(key: String, defaultValue: String): Long = {
-    if (settings.containsKey(key)) {
+    if (_conf.settings.containsKey(key)) {
       return Utils.byteStringAsKb(settings.get(key))
     } else {
       return Utils.byteStringAsKb(defaultValue)
@@ -120,15 +139,15 @@ class ScacheConf extends Logging {
   }
 
   def getSizeAsMb(key: String, defaultValue: String): Long = {
-    if (settings.containsKey(key)) {
-      return Utils.byteStringAsMb(settings.get(key))
+    if (_conf.settings.containsKey(key)) {
+      return Utils.byteStringAsMb(_conf.settings.get(key))
     } else {
       return Utils.byteStringAsMb(defaultValue)
     }
   }
 
   def getAll(): Array[(String, String)] = {
-    settings.entrySet().asScala.map(e => (e.getKey, e.getValue)).toArray
+    _conf.settings.entrySet().asScala.map(e => (e.getKey, e.getValue)).toArray
   }
 
   private final val avroNamespace = "avro.schema."
@@ -140,7 +159,7 @@ class ScacheConf extends Logging {
   }
 
   def getAppId: String = {
-    settings.get("scache.app.id")
+    _conf.settings.get("scache.app.id")
   }
 
 
@@ -159,23 +178,19 @@ class ScacheConf extends Logging {
   }
 }
 
-private[scache] object ScacheConf extends Logging {
+object ScacheConf extends Logging {
 
-  private def setSingleton(c: ScacheConf) = {
-    if (conf == null) {
-      conf = c
-    } else {
-      logError("Scache Conf can be init only once")
-    }
-  }
+  private var conf: ScacheConf = null
+  var scacheHome: String = null
+  var scacheLocalDir = scacheHome + "/tmp"
+  private val lock = new Object
+
 
   def getConf(): ScacheConf = {
     return conf
   }
 
-  private var conf: ScacheConf = null
-  val scacheHome = System.getenv("SCACHE_HOME")
-  val scacheLocalDir = scacheHome + "/tmp"
+
 
   private[scache] val DRIVER_IDENTIFIER = "driver"
 }

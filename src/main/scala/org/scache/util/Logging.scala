@@ -87,7 +87,7 @@ private[scache] trait Logging {
   }
 
   private def initializeLogging(): Unit = {
-    val scache_home = ScacheConf.scacheHome
+    val scache_home = sys.env.get("SCACHE_HOME").getOrElse("/home/spark/SCache")
     val propertiesPath = scache_home + "/conf/log4j.properties"
     // val loader = getClass.getClassLoader
     // val url = loader.getResource("log4j.properties")
