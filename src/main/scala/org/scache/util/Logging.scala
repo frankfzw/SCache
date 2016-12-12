@@ -15,6 +15,9 @@ private[scache] trait Logging {
   // Make logger transient to avoid serialized inside a Object with Logging
   @transient private var log_ : Logger = null
 
+  // Log dir for external init
+  protected var _logDir: String = null
+
   // Method to get the logger name for this object
   protected def logName = {
     // Ignore trailing $'s in the class names for Scala objects
@@ -87,7 +90,13 @@ private[scache] trait Logging {
   }
 
   private def initializeLogging(): Unit = {
-    val scache_home = sys.env.get("SCACHE_HOME").getOrElse("/home/spark/SCache")
+    val scache_home = {
+      if (_logDir == null) {
+        sys.env.get("SCACHE_HOME").getOrElse("/home/spark/SCache")
+      } else {
+        _logDir
+      }
+    }
     val propertiesPath = scache_home + "/conf/log4j.properties"
     // val loader = getClass.getClassLoader
     // val url = loader.getResource("log4j.properties")

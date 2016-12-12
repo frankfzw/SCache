@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 import com.typesafe.config.{Config, ConfigFactory}
 import scala.collection.JavaConverters._
 
-class ScacheConf(home: String) extends Logging {
+class ScacheConf(var home: String) extends Logging {
 
   val settings = new ConcurrentHashMap[String, String]()
   private def _conf: ScacheConf = {
@@ -23,6 +23,7 @@ class ScacheConf(home: String) extends Logging {
             logError(s"SCACHE_HOME is not set correctly")
             throw new Exception(s"SCACHE_HOME is not set correctly")
           }
+          _logDir = home
           val configPath = home + "/conf/scache.conf"
           val config = ConfigFactory.parseFile(new File(configPath))
           for (e <- config.entrySet().asScala) {
