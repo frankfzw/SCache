@@ -9,7 +9,7 @@ libraryDependencies ++= Seq(
   "org.slf4j" % "slf4j-api" % "1.7.21",
   "org.slf4j" % "slf4j-log4j12" % "1.7.21",
   "com.typesafe" % "config" % "1.2.1",
-  "com.google.guava" % "guava" % "18.0",
+  "com.google.guava" % "guava" % "17.0",
   "com.google.code.findbugs" % "jsr305" % "3.0.0",
   "io.netty" % "netty-all" % "4.0.29.Final",
   "io.netty" % "netty" % "3.8.0.Final",
