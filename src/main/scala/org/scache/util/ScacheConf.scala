@@ -9,12 +9,13 @@ import java.util.NoSuchElementException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{Config, ConfigFactory, ConfigValueType}
+
 import scala.collection.JavaConverters._
 
 class ScacheConf(var home: String) extends Logging {
 
-  val settings = new ConcurrentHashMap[String, String]()
+  final val settings = new ConcurrentHashMap[String, String]()
 
   if (ScacheConf.conf == null) {
     ScacheConf.lock synchronized {
@@ -27,7 +28,16 @@ class ScacheConf(var home: String) extends Logging {
         val configPath = home + "/conf/scache.conf"
         val config = ConfigFactory.parseFile(new File(configPath))
         for (e <- config.entrySet().asScala) {
-          settings.put(e.getKey, e.getValue.toString)
+          e.getValue.valueType() match {
+            case ConfigValueType.BOOLEAN =>
+              settings.put(e.getKey, config.getBoolean(e.getKey).toString)
+            case ConfigValueType.STRING =>
+              settings.put(e.getKey, config.getString(e.getKey))
+            case ConfigValueType.NUMBER =>
+              settings.put(e.getKey, config.getInt(e.getKey).toString)
+            case _ =>
+          }
+
         }
         ScacheConf.conf = this
         ScacheConf.scacheHome = home
