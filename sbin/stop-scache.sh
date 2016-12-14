@@ -10,17 +10,18 @@ sbin=`cd "$sbin"; pwd`
 
 . "$sbin/config.sh"
 
-
-
 SLAVES=`cat ${SCACHE_HOME}/conf/slaves`
 # echo $USER
 
 
-echo "start master"
-. "$sbin/start-master.sh"
-sleep 5
-
 for slave in $SLAVES; do
-    echo "start Scache on $slave"
-    exec ssh $slave ${SCACHE_HOME}/sbin/start-client.sh & 
+    echo "stop Scache on $slave"
+    exec ssh $slave ${SCACHE_HOME}/sbin/stop-client.sh & 
 done
+
+sleep 1
+
+echo "stop master"
+. "$sbin/stop-master.sh"
+
+
