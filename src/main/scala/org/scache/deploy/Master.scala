@@ -13,7 +13,7 @@ import org.scache.{MapOutputTracker, MapOutputTrackerMaster, MapOutputTrackerMas
 import org.scache.rpc._
 import org.scache.serializer.{JavaSerializer, SerializerManager}
 import org.scache.storage._
-import org.scache.util.{IdGenerator, Logging, RpcUtils, ScacheConf}
+import org.scache.util._
 
 import scala.collection.mutable
 
@@ -134,6 +134,8 @@ object Master extends Logging {
 
   def main(args: Array[String]): Unit = {
     logInfo("Start Master")
+    val hostName = Utils.findLocalInetAddress().getHostName
+    System.setProperty("SCACHE_DAEMON", s"master-${hostName}")
     val conf = new ScacheConf()
     val SYSTEM_NAME = "scache.master"
     val arguments = new MasterArguments(args, conf)

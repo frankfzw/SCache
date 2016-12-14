@@ -97,6 +97,7 @@ private[scache] trait Logging {
         _logDir
       }
     }
+    System.setProperty("SCACHE_HOME", scache_home)
     val propertiesPath = scache_home + "/conf/log4j.properties"
     // val loader = getClass.getClassLoader
     // val url = loader.getResource("log4j.properties")

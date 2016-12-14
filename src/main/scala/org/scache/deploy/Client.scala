@@ -145,7 +145,8 @@ object Client extends Logging{
   def main(args: Array[String]): Unit = {
     val conf = new ScacheConf()
     val arguements = new ClientArguments(args, conf)
-
+    val hostName = Utils.findLocalInetAddress().getHostName
+    System.setProperty("SCACHE_DAEMON", s"client-${hostName}")
     conf.set("scache.rpc.askTimeout", "10")
     logInfo("Start Client")
     conf.set("scache.driver.host", arguements.masterIp)
