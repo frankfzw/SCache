@@ -4,7 +4,7 @@ package org.scache.deploy
  * Created by frankfzw on 16-8-4.
  */
 
-import org.scache.deploy.DeployMessages.{Heartbeat, RegisterClient}
+import org.scache.deploy.DeployMessages.{Heartbeat, RegisterClient, RegisterShuffleMaster}
 import org.scache.io.ChunkedByteBuffer
 import org.scache.network.netty.NettyBlockTransferService
 import org.scache.scheduler.LiveListenerBus
@@ -16,6 +16,7 @@ import org.scache.storage._
 import org.scache.util._
 
 import scala.collection.mutable
+import scala.util.Random
 
 private class Master(
     val rpcEnv: RpcEnv,
@@ -60,6 +61,9 @@ private class Master(
   blockManager.initialize()
   // runTest()
 
+  // meta data to track cluster
+  val shuffleOutputStatus = new mutable.HashMap[ShuffleKey, ShuffleStatus]()
+
   override def receive: PartialFunction[Any, Unit] = {
     case Heartbeat(id, rpcRef) =>
       logInfo(s"Receive heartbeat from ${id}: ${rpcRef}")
@@ -70,7 +74,7 @@ private class Master(
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterClient(hostname, port, ref) =>
       if (hostnameToClientId.contains(hostname)) {
-        logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has registered again")
+        logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has been registered again")
         clientIdToInfo.remove(hostnameToClientId(hostname))
       }
       val clientId = Master.CLIENT_ID_GENERATOR.next
@@ -82,8 +86,31 @@ private class Master(
       clientIdToInfo.update(clientId, info)
       logInfo(s"Register client ${hostname} with id ${clientId}")
       context.reply(clientId)
+    case RegisterShuffleMaster(appName, jobId, shuffleId, numMapTask, numReduceTask) =>
+      context.reply(registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
     case _ =>
       logError("Empty message received !")
+  }
+
+  def registerShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int): Boolean = {
+    val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
+    if (shuffleOutputStatus.contains(shuffleKey)) {
+      logWarning(s"Shuffle: $shuffleKey has been registered again !")
+      return false
+    }
+    val shuffleStatus = new ShuffleStatus(shuffleId, numMapTask, numReduceTask)
+
+    // apply random reduce allocation
+    val clientList = Random.shuffle(hostnameToClientId.keys.toList)
+    val numRep = Math.min(conf.getInt("scache.shuffle.replication", 0), clientList.size)
+    for (i <- 0 until numReduceTask) {
+      val p = i % clientList.size
+      val backups = (for (c <- clientList if c != clientList(p)) yield c).toArray
+      shuffleStatus.reduceArray(i) = new ReduceStatus(i, clientList(p), Random.shuffle(backups).slice(0, numRep))
+    }
+    shuffleOutputStatus += (shuffleKey -> shuffleStatus)
+
+    true
   }
 
 

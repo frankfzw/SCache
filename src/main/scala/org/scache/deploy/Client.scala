@@ -6,8 +6,9 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.FileChannel.MapMode
 import java.nio.file.StandardOpenOption
+import java.util.concurrent.ConcurrentHashMap
 
-import org.scache.deploy.DeployMessages.{PutBlock, RegisterClient, RegisterClientSuccess}
+import org.scache.deploy.DeployMessages._
 import org.scache.network.netty.NettyBlockTransferService
 import org.scache.storage._
 import org.scache.storage.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
@@ -16,6 +17,7 @@ import org.scache.rpc._
 import org.scache.serializer.{JavaSerializer, SerializerManager}
 import org.scache.util._
 
+import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.Exception
 import scala.util.{Failure, Success}
@@ -65,6 +67,8 @@ class Client(
   logInfo(s"Got ID ${clientId} from master")
   blockManager.initialize()
 
+  // meta of shuffle tracking
+  val shuffleOutputStatus = new mutable.HashMap[ShuffleKey, ShuffleStatus]()
   // create the future context for client
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("client-future", 128))
@@ -90,9 +94,14 @@ class Client(
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
-
+    case RegisterShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask) =>
+      context.reply(registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
     case _ =>
       logError("Empty message received !")
+  }
+
+  def registerShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int): Boolean = {
+    master.askWithRetry[Boolean](RegisterShuffleMaster(appName, jobId, shuffleId, numMapTask, numReduceTask))
   }
 
   def readBlockFromDaemon(blockId: BlockId, size: Int): Unit = {
@@ -108,6 +117,19 @@ class Client(
         blockManager.putSingle(blockId, data, StorageLevel.MEMORY_ONLY)
         logDebug(s"Put block $blockId with size $size successfully")
         channel.close()
+
+        // start block transmission immediately
+        val shuffleKey = ShuffleKey.fromString(blockId.toString)
+        if (!shuffleOutputStatus.contains(shuffleKey)) {
+          shuffleOutputStatus.synchronized {
+            if (!shuffleOutputStatus.contains(shuffleKey)) {
+              val shuffleStatus = master.askWithRetry[ShuffleStatus](RequestShuffleStatus(shuffleKey))
+              shuffleOutputStatus += (shuffleKey -> shuffleStatus)
+            }
+          }
+        }
+        // TODO start transmission
+
       } catch {
         case e: Exception =>
           logError(s"Copy block $blockId error, ${e.getMessage}")
