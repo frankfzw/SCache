@@ -7,7 +7,7 @@ package org.scache.util
 private[scache] object ShuffleKey {
   def fromString(key: String): ShuffleKey = {
     val metas = key.split("_")
-    if (metas.size != 3) {
+    if (metas.size < 3) {
       return ShuffleKey("null", 0, 0)
     }
     return ShuffleKey(metas(0), Integer.parseInt(metas(1)), Integer.parseInt((metas(2))))

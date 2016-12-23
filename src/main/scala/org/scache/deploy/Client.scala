@@ -20,7 +20,7 @@ import org.scache.util._
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.Exception
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Random, Success}
 
 /**
  * Created by frankfzw on 16-9-19.
@@ -74,18 +74,7 @@ class Client(
     ThreadUtils.newDaemonCachedThreadPool("client-future", 128))
   // runTest()
 
-  // rpcEnv.asyncSetupEndpointRefByURI(masterHostname).flatMap { ref =>
-  //   master = Some(ref)
-  //   ref.ask[Int](RegisterClient(hostname, port, self))
-  // }(ThreadUtils.sameThread).onComplete {
-  //   case Success(id) =>
-  //     clientId = id
-  //     blockManager = new BlockManager(clientId.toString, rpcEnv, blockManagerMaster,
-  //       serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
-  //     logInfo(s"Got ID ${clientId} from master")
-  //   case Failure(e) =>
-  //     logError("Fail to connect master: " + e.getMessage)
-  // }(ThreadUtils.sameThread)
+
   override def receive: PartialFunction[Any, Unit] = {
     case PutBlock(blockId, size) =>
       readBlockFromDaemon(blockId, size)
@@ -119,15 +108,7 @@ class Client(
         channel.close()
 
         // start block transmission immediately
-        val shuffleKey = ShuffleKey.fromString(blockId.toString)
-        if (!shuffleOutputStatus.contains(shuffleKey)) {
-          shuffleOutputStatus.synchronized {
-            if (!shuffleOutputStatus.contains(shuffleKey)) {
-              val shuffleStatus = master.askWithRetry[ShuffleStatus](RequestShuffleStatus(shuffleKey))
-              shuffleOutputStatus += (shuffleKey -> shuffleStatus)
-            }
-          }
-        }
+        val shuffleStatus = getShuffleStatus(blockId)
         // TODO start transmission
 
       } catch {
@@ -137,6 +118,33 @@ class Client(
 
     }(futureExecutionContext)
 
+  }
+
+  private def getShuffleStatus(blockId: BlockId): ShuffleStatus = {
+    val shuffleKey = ShuffleKey.fromString(blockId.toString)
+    shuffleOutputStatus.get(shuffleKey) match {
+      case Some(status) =>
+        status
+      case None =>
+        // need to add synchronized since it will be called in a Future context
+        shuffleOutputStatus.synchronized {
+          if (!shuffleOutputStatus.contains(shuffleKey)) {
+            val shuffleStatus = master.askWithRetry[Option[ShuffleStatus]](RequestShuffleStatus(shuffleKey))
+            shuffleStatus match {
+              case Some(status) =>
+                shuffleOutputStatus += (shuffleKey -> status)
+                logInfo(s"Get shuffle output status from master: " +
+                  s"ID:${status.shffleId}, map task number: ${status.mapTaskNum}, reduce task number: ${status.reduceTaskNum}")
+                return status
+              case None =>
+                logError(s"Shuffle is unregistered: ${shuffleKey.toString()}")
+                throw new Exception(s"Shuffle is unregistered: ${shuffleKey.toString()}")
+            }
+          } else {
+            return shuffleOutputStatus.get(shuffleKey).get
+          }
+        }
+    }
   }
 
   def runTest(): Unit = {
@@ -158,6 +166,16 @@ class Client(
         logInfo(s"The size of ${blockIda1} is ${buffer.size}")
       case None =>
         logError(s"Wrong fetch result")
+    }
+
+    // shuffle register test
+    Thread.sleep(Random.nextInt(1000))
+    val res = registerShuffle("scache", 0, 1, 5, 2)
+    logInfo(s"TEST: register shuffle got ${res}")
+    Thread.sleep(Random.nextInt(1000))
+    val statuses = getShuffleStatus(ScacheBlockId("scache", 0, 1, 0, 0))
+    for (rs <- statuses.reduceArray) {
+      logInfo(s"TEST: shuffle status of ${statuses.shffleId}: reduce ${rs.id} on ${rs.host}")
     }
   }
 
