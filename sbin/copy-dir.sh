@@ -40,7 +40,7 @@ DEST=`dirname "$DIR"`
 sbin=`dirname "$0"`
 sbin=`cd "$sbin"; pwd`
 
-SLAVES=`cat ../conf/slaves`
+SLAVES=`cat $sbin/../conf/slaves`
 
 SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=5"
 
