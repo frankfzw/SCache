@@ -169,13 +169,13 @@ object Master extends Logging {
   private val CLIENT_ID_GENERATOR = new IdGenerator
 
   def main(args: Array[String]): Unit = {
-    logInfo("Start Master")
     val hostName = Utils.findLocalInetAddress().getHostName
     System.setProperty("SCACHE_DAEMON", s"master-${hostName}")
     val conf = new ScacheConf()
     val SYSTEM_NAME = "scache.master"
     val arguments = new MasterArguments(args, conf)
-    conf.set("scache.app.id", "test")
+    // conf.set("scache.app.id", "test")
+    logInfo("Start Master")
     val rpcEnv = RpcEnv.create(SYSTEM_NAME, arguments.host, arguments.port, conf)
     val masterEndpoint = rpcEnv.setupEndpoint("Master",
       new Master(rpcEnv, arguments.host, conf, true, arguments.isLocal))

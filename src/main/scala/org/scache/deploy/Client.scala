@@ -90,7 +90,9 @@ class Client(
   }
 
   def registerShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int): Boolean = {
-    master.askWithRetry[Boolean](RegisterShuffleMaster(appName, jobId, shuffleId, numMapTask, numReduceTask))
+    val res = master.askWithRetry[Boolean](RegisterShuffleMaster(appName, jobId, shuffleId, numMapTask, numReduceTask))
+    logInfo(s"Trying to register shuffle $appName, $jobId, $shuffleId with map $numMapTask and reduce $numReduceTask, get $res")
+    res
   }
 
   def readBlockFromDaemon(blockId: BlockId, size: Int): Unit = {
