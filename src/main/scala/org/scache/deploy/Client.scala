@@ -110,7 +110,7 @@ class Client(
         channel.close()
 
         // start block transmission immediately
-        val shuffleStatus = getShuffleStatus(blockId)
+        // val shuffleStatus = getShuffleStatus(blockId)
         // TODO start transmission
 
       } catch {

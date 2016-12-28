@@ -17,12 +17,15 @@ private[deploy] object DeployMessages {
   case class PutBlockMaster(scacheBlockId: BlockId, size: Int) extends ToDeployMaster
   case class RegisterShuffleMaster(appName:String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) extends ToDeployMaster
   case class RequestShuffleStatus(shuffleKey: ShuffleKey) extends ToDeployMaster
+  case class MapEndToMaster(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToDeployMaster
 
   sealed trait FromDaemon
   case class PutBlock(scacheBlockId: BlockId, size: Int) extends FromDaemon
   case class GetBlock(scacheBlockId: BlockId) extends FromDaemon
   case class RegisterShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) extends FromDaemon
+  case class MapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends FromDaemon
 
   sealed trait  ToDeployClient
   case class RegisterClientSuccess(clientId: Int) extends ToDeployClient
+  case class StartMapFetch(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToDeployClient
 }
