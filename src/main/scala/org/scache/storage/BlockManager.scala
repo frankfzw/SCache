@@ -960,6 +960,7 @@ private[scache] class BlockManager(
         if (tellMaster) {
           reportBlockStatus(blockId, info, putBlockStatus)
         }
+        mapOutputTracker.updateMapBlockSize(blockId, size)
 
         logDebug("Put block %s locally took %s".format(blockId, Utils.getUsedTimeMs(startTimeMs)))
         if (level.replication > 1) {

@@ -111,8 +111,7 @@ class Client(
 
         // start block transmission immediately
         // val shuffleStatus = getShuffleStatus(blockId)
-        // TODO start transmission
-        val statuses = mapOutputTracker.getShuffleStatuses(ShuffleKey.fromString(blockId.toString))
+        // val statuses = mapOutputTracker.getShuffleStatuses(ShuffleKey.fromString(blockId.toString))
 
       } catch {
         case e: Exception =>
