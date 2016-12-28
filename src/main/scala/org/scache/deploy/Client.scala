@@ -68,7 +68,7 @@ class Client(
   blockManager.initialize()
 
   // meta of shuffle tracking
-  val shuffleOutputStatus = new mutable.HashMap[ShuffleKey, ShuffleStatus]()
+  // val shuffleOutputStatus = new mutable.HashMap[ShuffleKey, ShuffleStatus]()
   // create the future context for client
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("client-future", 128))
@@ -90,7 +90,7 @@ class Client(
   }
 
   def registerShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int): Boolean = {
-    val res = master.askWithRetry[Boolean](RegisterShuffleMaster(appName, jobId, shuffleId, numMapTask, numReduceTask))
+    val res = mapOutputTracker.registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask)
     logInfo(s"Trying to register shuffle $appName, $jobId, $shuffleId with map $numMapTask and reduce $numReduceTask, get $res")
     res
   }
@@ -112,6 +112,7 @@ class Client(
         // start block transmission immediately
         // val shuffleStatus = getShuffleStatus(blockId)
         // TODO start transmission
+        val statuses = mapOutputTracker.getShuffleStatuses(ShuffleKey.fromString(blockId.toString))
 
       } catch {
         case e: Exception =>
@@ -124,29 +125,7 @@ class Client(
 
   private def getShuffleStatus(blockId: BlockId): ShuffleStatus = {
     val shuffleKey = ShuffleKey.fromString(blockId.toString)
-    shuffleOutputStatus.get(shuffleKey) match {
-      case Some(status) =>
-        status
-      case None =>
-        // need to add synchronized since it will be called in a Future context
-        shuffleOutputStatus.synchronized {
-          if (!shuffleOutputStatus.contains(shuffleKey)) {
-            val shuffleStatus = master.askWithRetry[Option[ShuffleStatus]](RequestShuffleStatus(shuffleKey))
-            shuffleStatus match {
-              case Some(status) =>
-                shuffleOutputStatus += (shuffleKey -> status)
-                logInfo(s"Get shuffle output status from master: " +
-                  s"ID:${status.shffleId}, map task number: ${status.mapTaskNum}, reduce task number: ${status.reduceTaskNum}")
-                return status
-              case None =>
-                logError(s"Shuffle is unregistered: ${shuffleKey.toString()}")
-                throw new Exception(s"Shuffle is unregistered: ${shuffleKey.toString()}")
-            }
-          } else {
-            return shuffleOutputStatus.get(shuffleKey).get
-          }
-        }
-    }
+    mapOutputTracker.getShuffleStatuses(shuffleKey)
   }
 
   def runTest(): Unit = {
