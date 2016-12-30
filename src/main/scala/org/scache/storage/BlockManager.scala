@@ -20,9 +20,9 @@ package org.scache.storage
 import java.io._
 import java.nio.ByteBuffer
 
-
+import com.google.common.io.ByteStreams
 import org.scache.memory.MemoryMode
-import org.scache.storage.memory.{PartiallyUnrolledIterator, BlockEvictionHandler, MemoryStore, MemoryManager}
+import org.scache.storage.memory.{BlockEvictionHandler, MemoryManager, MemoryStore, PartiallyUnrolledIterator}
 import org.scache.unsafe.Platform
 
 import scala.collection.mutable.{ArrayBuffer, HashMap}
@@ -31,7 +31,6 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
-
 import org.scache._
 import org.scache.util.Logging
 import org.scache.network._
@@ -41,6 +40,7 @@ import org.scache.rpc.RpcEnv
 import org.scache.serializer.{SerializerInstance, SerializerManager}
 import org.scache.util._
 import org.scache.io.ChunkedByteBuffer
+import org.scache.network.transfer.BlockFetchingListener
 
 
 object DataReadMethod extends Enumeration with Serializable {
@@ -589,6 +589,29 @@ private[scache] class BlockManager(
     None
   }
 
+  def asyncGetRemoteBlock(blockManagerId: BlockManagerId, blockIds: Array[String]): Unit = {
+    if (blockManagerId.executorId.equals(executorId)) {
+      logWarning(s"Got a local block fetch in remote fetch handler")
+      return
+    }
+    logDebug(s"Start to fetch remote block from ${blockManagerId.host}")
+    shuffleClient.fetchBlocks(blockManagerId.host, blockManagerId.port, blockManagerId.executorId, blockIds,
+      new BlockFetchingListener {
+        override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
+          logError(s"Fail to fetch block: $blockId from ${blockManagerId.host}")
+          throw exception
+        }
+
+        override def onBlockFetchSuccess(blockId: String, data: ManagedBuffer): Unit = {
+          val bytes = ByteStreams.toByteArray(data.createInputStream())
+          val buf = ByteBuffer.wrap(bytes)
+          val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
+          putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
+          logDebug(s"Got remote block ${blockId} from ${blockManagerId.host} with size ${bytes.length}")
+        }
+      })
+  }
+
   /**
    * Get a block from the block manager (either local or remote).
    *
@@ -960,7 +983,7 @@ private[scache] class BlockManager(
         if (tellMaster) {
           reportBlockStatus(blockId, info, putBlockStatus)
         }
-        mapOutputTracker.updateMapBlockSize(blockId, size)
+        // mapOutputTracker.updateMapBlockSize(blockId, size)
 
         logDebug("Put block %s locally took %s".format(blockId, Utils.getUsedTimeMs(startTimeMs)))
         if (level.replication > 1) {

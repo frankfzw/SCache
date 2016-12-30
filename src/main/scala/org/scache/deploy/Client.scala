@@ -9,6 +9,7 @@ import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentHashMap
 
 import org.scache.deploy.DeployMessages._
+import org.scache.io.ChunkedByteBuffer
 import org.scache.network.netty.NettyBlockTransferService
 import org.scache.storage._
 import org.scache.storage.memory.{MemoryManager, StaticMemoryManager, UnifiedMemoryManager}
@@ -18,9 +19,11 @@ import org.scache.serializer.{JavaSerializer, SerializerManager}
 import org.scache.util._
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.Exception
 import scala.util.{Failure, Random, Success}
+
 
 /**
  * Created by frankfzw on 16-9-19.
@@ -59,13 +62,16 @@ class Client(
   val blockManagerMaster = new BlockManagerMaster(blockManagerMasterEndpoint, conf, false)
   var blockManager:BlockManager = null
 
-  logInfo("Client connecting to master " + masterHostname)
-  master = RpcUtils.makeDriverRef("Master", conf, rpcEnv)
-  clientId = master.askWithRetry[Int](RegisterClient(hostname, port, self))
-  blockManager = new BlockManager(clientId.toString, rpcEnv, blockManagerMaster,
-    serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
-  logInfo(s"Got ID ${clientId} from master")
-  blockManager.initialize()
+  override def onStart(): Unit = {
+    logInfo("Client connecting to master " + masterHostname)
+    master = RpcUtils.makeDriverRef("Master", conf, rpcEnv)
+    clientId = master.askWithRetry[Int](RegisterClient(hostname, port, self))
+    blockManager = new BlockManager(clientId.toString, rpcEnv, blockManagerMaster,
+      serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
+    logInfo(s"Got ID ${clientId} from master")
+    blockManager.initialize()
+  }
+
 
   // meta of shuffle tracking
   // val shuffleOutputStatus = new mutable.HashMap[ShuffleKey, ShuffleStatus]()
@@ -74,10 +80,22 @@ class Client(
     ThreadUtils.newDaemonCachedThreadPool("client-future", 128))
   // runTest()
 
+  override def onStop(): Unit = {
+    futureExecutionContext.shutdown()
+  }
+
 
   override def receive: PartialFunction[Any, Unit] = {
+    // from deamon
     case PutBlock(blockId, size) =>
       readBlockFromDaemon(blockId, size)
+    case MapEnd(appName, jobId, shuffleId, mapId) =>
+      mapEnd(appName, jobId, shuffleId, mapId)
+    // from master
+    case StartMapFetch(blockManagerId, appName, jobId, shuffleId, mapId) =>
+      startMapFetch(blockManagerId, appName, jobId, shuffleId, mapId)
+    case StartMapFetch(blockManagerId, appName, jobId, shuffleId, mapId) =>
+      startMapFetch(blockManagerId, appName, jobId, shuffleId, mapId)
     case _ =>
       logError("Empty message received !")
   }
@@ -95,7 +113,37 @@ class Client(
     res
   }
 
+  def mapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+    master.ask(MapEndToMaster(appName, jobId, shuffleId, mapId))
+  }
+
+  def startMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+    // only pre-fetch remote bytes
+    if (blockManagerId.executorId.equals(clientId.toString)) {
+      return
+    }
+    logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${blockManagerId.host}")
+    val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
+    val shuffleStatus = mapOutputTracker.getShuffleStatuses(shuffleKey)
+    val bIds = new ArrayBuffer[String]()
+    for (r <- shuffleStatus.reduceArray) {
+      if (r.host.equals(hostname)) {
+        // TODO start fetch and add call back to store block in memory
+        val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
+        bIds.append(bId.toString)
+      }
+    }
+    blockManager.asyncGetRemoteBlock(blockManagerId, bIds.toArray)
+  }
+
   def readBlockFromDaemon(blockId: BlockId, size: Int): Unit = {
+    if (size == 0) {
+      val data = new Array[Byte](0)
+      val buf = ByteBuffer.wrap(data)
+      val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
+      blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.MEMORY_ONLY)
+      return
+    }
     Future {
       try {
         val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
@@ -105,7 +153,9 @@ class Client(
         val data = new Array[Byte](size)
         buffer.get(data)
         logDebug(s"Get block ${blockId} with $size, hash code: ${data.toSeq.hashCode()}")
-        blockManager.putSingle(blockId, data, StorageLevel.MEMORY_ONLY)
+        val buf = ByteBuffer.wrap(data)
+        val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
+        blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.MEMORY_ONLY)
         logDebug(s"Put block $blockId with size $size successfully")
         channel.close()
 

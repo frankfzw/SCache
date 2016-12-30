@@ -41,8 +41,8 @@ private[scache] case class RegisterShuffleMaster(appName:String, jobId: Int, shu
   extends MapOutputTrackerMessage
 private[scache] case class RequestShuffleStatus(shuffleKey: ShuffleKey)
   extends MapOutputTrackerMessage
-private[scache] case class UpdateMapBlockSize(blockId: BlockId, size: Long)
-  extends MapOutputTrackerMessage
+// private[scache] case class UpdateMapBlockSize(blockId: BlockId, size: Long)
+//   extends MapOutputTrackerMessage
 
 private[scache] case class GetMapOutputMessage(shuffleId: Int, context: RpcCallContext)
 
@@ -59,8 +59,8 @@ private[scache] class MapOutputTrackerMasterEndpoint(
       } else {
         context.reply(Some(status))
       }
-    case UpdateMapBlockSize(blockId, size) =>
-      context.reply(tracker.updateMapBlockSize(blockId, size))
+    // case UpdateMapBlockSize(blockId, size) =>
+    //   context.reply(tracker.updateMapBlockSize(blockId, size))
     case RegisterShuffleMaster(appName:String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) =>
       context.reply(tracker.registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
     case StopMapOutputTracker =>
@@ -127,7 +127,7 @@ private[scache] abstract class MapOutputTracker(conf: ScacheConf) extends Loggin
                 throw new Exception(s"Shuffle is unregistered: ${shuffleKey.toString()}")
             }
           } else {
-            return shuffleOutputStatus.get(shuffleKey).get
+            return shuffleOutputStatus(shuffleKey)
           }
         }
     }
@@ -139,19 +139,19 @@ private[scache] abstract class MapOutputTracker(conf: ScacheConf) extends Loggin
     res
   }
 
-  def updateMapBlockSize(blockId: BlockId, size: Long): Boolean = {
-    blockId match {
-      case ScacheBlockId(appName, jobId, shuffleId, mapId, reduceId) =>
-        if (size > 0) {
-          return askTracker[Boolean](UpdateMapBlockSize(blockId, size))
-        } else {
-          return true
-        }
-      case _ =>
-        logError(s"Got wrong block type, require ${ScacheBlockId.getClass.toString}, got ${blockId.getClass.toString}")
-        return false
-    }
-  }
+  // def updateMapBlockSize(blockId: BlockId, size: Long): Boolean = {
+  //   blockId match {
+  //     case ScacheBlockId(appName, jobId, shuffleId, mapId, reduceId) =>
+  //       if (size > 0) {
+  //         return askTracker[Boolean](UpdateMapBlockSize(blockId, size))
+  //       } else {
+  //         return true
+  //       }
+  //     case _ =>
+  //       logError(s"Got wrong block type, require ${ScacheBlockId.getClass.toString}, got ${blockId.getClass.toString}")
+  //       return false
+  //   }
+  // }
 
 
 
@@ -204,23 +204,23 @@ private[scache] class MapOutputTrackerMaster(conf: ScacheConf, isLocal: Boolean)
     }
   }
 
-  override def updateMapBlockSize(blockId: BlockId, size: Long): Boolean = {
-    val shuffleKey = ShuffleKey.fromString(blockId.toString)
-    val bId = blockId.asInstanceOf[ScacheBlockId]
-    shuffleOutputStatus.get(shuffleKey) match {
-      case Some(status) =>
-        if (bId.mapId >= status.mapTaskNum || bId.reduceId >= status.reduceTaskNum) {
-          logError(s"Wrong block id, got ${bId.toString}, excepted map task number is ${status.mapTaskNum}, reduce task number is ${status.reduceTaskNum}")
-          return false
-        }
-        status.reduceArray(bId.reduceId).size(bId.mapId) = size
-        logDebug(s"Update shuffle ${shuffleKey} map block with Id: ${blockId.toString} and size: $size")
-        return true
-      case None =>
-        logError(s"Shuffle ${shuffleKey} is not registered")
-        return false
-    }
-  }
+  // override def updateMapBlockSize(blockId: BlockId, size: Long): Boolean = {
+  //   val shuffleKey = ShuffleKey.fromString(blockId.toString)
+  //   val bId = blockId.asInstanceOf[ScacheBlockId]
+  //   shuffleOutputStatus.get(shuffleKey) match {
+  //     case Some(status) =>
+  //       if (bId.mapId >= status.mapTaskNum || bId.reduceId >= status.reduceTaskNum) {
+  //         logError(s"Wrong block id, got ${bId.toString}, excepted map task number is ${status.mapTaskNum}, reduce task number is ${status.reduceTaskNum}")
+  //         return false
+  //       }
+  //       status.reduceArray(bId.reduceId).size(bId.mapId) = size
+  //       logDebug(s"Update shuffle ${shuffleKey} map block with Id: ${blockId.toString} and size: $size")
+  //       return true
+  //     case None =>
+  //       logError(s"Shuffle ${shuffleKey} is not registered")
+  //       return false
+  //   }
+  // }
 
 
 

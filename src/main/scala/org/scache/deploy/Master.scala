@@ -6,7 +6,7 @@ package org.scache.deploy
 
 import java.util.concurrent.ConcurrentHashMap
 
-import org.scache.deploy.DeployMessages.{Heartbeat, RegisterClient}
+import org.scache.deploy.DeployMessages.{Heartbeat, MapEndToMaster, RegisterClient, StartMapFetch}
 import org.scache.io.ChunkedByteBuffer
 import org.scache.network.netty.NettyBlockTransferService
 import org.scache.scheduler.LiveListenerBus
@@ -18,6 +18,7 @@ import org.scache.storage._
 import org.scache.util._
 
 import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
 
 private class Master(
@@ -63,33 +64,27 @@ private class Master(
     serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
 
   blockManager.initialize()
+  private val futureExecutionContext = ExecutionContext.fromExecutorService(
+    ThreadUtils.newDaemonCachedThreadPool("master-future", 128))
   // runTest()
 
   // meta data to track cluster
   // val shuffleOutputStatus = new ConcurrentHashMap[ShuffleKey, ShuffleStatus]()
+  override def onStop(): Unit = {
+    futureExecutionContext.shutdown()
+  }
 
   override def receive: PartialFunction[Any, Unit] = {
     case Heartbeat(id, rpcRef) =>
       logInfo(s"Receive heartbeat from ${id}: ${rpcRef}")
+
     case _ =>
       logError("Empty message received !")
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterClient(hostname, port, ref) =>
-      if (hostnameToClientId.contains(hostname)) {
-        logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has been registered again")
-        clientIdToInfo.remove(hostnameToClientId(hostname))
-      }
-      val clientId = Master.CLIENT_ID_GENERATOR.next
-      val info = new ClientInfo(clientId, hostname, port, ref)
-      if (hostnameToClientId.contains(hostname)) {
-        clientIdToInfo -= hostnameToClientId(hostname)
-      }
-      hostnameToClientId.update(hostname, clientId)
-      clientIdToInfo.update(clientId, info)
-      logInfo(s"Register client ${hostname} with id ${clientId}")
-      context.reply(clientId)
+      context.reply(registerClient(hostname, port, ref))
     // case RegisterShuffleMaster(appName, jobId, shuffleId, numMapTask, numReduceTask) =>
     //   context.reply(registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
     // case RequestShuffleStatus(shuffleKey) =>
@@ -98,6 +93,9 @@ private class Master(
     //   } else {
     //     context.reply(None)
     //   }
+    case MapEndToMaster(appName, jobId, shuffleId, mapId) =>
+      logInfo(s"Map task ${appName}_${jobId}_${shuffleId}_${mapId} finished on ${context.senderAddress.host}")
+      startMapFetch(context.senderAddress.host, appName, jobId, shuffleId, mapId)
     case _ =>
       logError("Empty message received !")
   }
@@ -123,6 +121,44 @@ private class Master(
 
   //   true
   // }
+  def registerClient(hostname: String, port: Int, rpcEndpointRef: RpcEndpointRef): Int = {
+    if (hostnameToClientId.contains(hostname)) {
+      logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has been registered again")
+      clientIdToInfo.remove(hostnameToClientId(hostname))
+    }
+    val clientId = Master.CLIENT_ID_GENERATOR.next
+    val info = new ClientInfo(clientId, hostname, port, rpcEndpointRef)
+    if (hostnameToClientId.contains(hostname)) {
+      clientIdToInfo -= hostnameToClientId(hostname)
+    }
+    hostnameToClientId.update(hostname, clientId)
+    clientIdToInfo.update(clientId, info)
+    logInfo(s"Register client ${hostname} with id ${clientId} and rpc ref ${rpcEndpointRef}")
+    return clientId
+  }
+
+  def startMapFetch(host: String, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+
+    val shuffleStatus = mapOutputTracker.getShuffleStatuses(ShuffleKey(appName, jobId, shuffleId))
+    if (shuffleStatus == null) {
+      logError(s"Shuffle ${ShuffleKey(appName, jobId, shuffleId).toString()} is not registered")
+      return
+    }
+    Future {
+      val blockManagerId = hostnameToClientId.get(host) match {
+        case Some(clientId) =>
+          blockManagerMaster.getBlockManagerId(clientId.toString).get
+        case None =>
+          logError(s"Host $host is not registered")
+          return
+      }
+      for (info <- clientIdToInfo.values) {
+        logDebug(s"Start notify ${info.host} to fetch $jobId:$shuffleId:$mapId")
+        info.ref.send(StartMapFetch(blockManagerId, appName, jobId, shuffleId, mapId))
+      }
+
+    }(futureExecutionContext)
+  }
 
 
   def runTest(): Unit = {

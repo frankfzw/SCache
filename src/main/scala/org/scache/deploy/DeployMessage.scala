@@ -1,7 +1,7 @@
 package org.scache.deploy
 
 import org.scache.rpc.RpcEndpointRef
-import org.scache.storage.BlockId
+import org.scache.storage.{BlockId, BlockManagerId}
 import org.scache.util.ShuffleKey
 
 /**
@@ -17,7 +17,7 @@ private[deploy] object DeployMessages {
   // case class PutBlockMaster(scacheBlockId: BlockId, size: Int) extends ToDeployMaster
   // case class RegisterShuffleMaster(appName:String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) extends ToDeployMaster
   // case class RequestShuffleStatus(shuffleKey: ShuffleKey) extends ToDeployMaster
-  // case class MapEndToMaster(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToDeployMaster
+  case class MapEndToMaster(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToDeployMaster
 
   sealed trait FromDaemon
   case class PutBlock(scacheBlockId: BlockId, size: Int) extends FromDaemon
@@ -27,5 +27,5 @@ private[deploy] object DeployMessages {
 
   sealed trait  ToDeployClient
   case class RegisterClientSuccess(clientId: Int) extends ToDeployClient
-  // case class StartMapFetch(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToDeployClient
+  case class StartMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToDeployClient
 }

@@ -15,7 +15,7 @@ private[scache] class ReduceStatus(reduceId: Int, hostAddr: String, bak: Array[S
   val id = reduceId
   val host = hostAddr
   val backups = bak
-  val size = new Array[Long](numMap)
+  // val size = new Array[Long](numMap)
 }
 
 

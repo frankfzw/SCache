@@ -75,6 +75,9 @@ class BlockManagerMasterEndpoint(
     case GetExecutorEndpointRef(executorId) =>
       context.reply(getExecutorEndpointRef(executorId))
 
+    case GetBlockManagerId(executorId) =>
+      context.reply(getBlockManagerId(executorId))
+
     case GetMemoryStatus =>
       context.reply(memoryStatus)
 
@@ -392,6 +395,10 @@ class BlockManagerMasterEndpoint(
     ) yield {
       info.slaveEndpoint
     }
+  }
+
+  private def getBlockManagerId(executorId: String): Option[BlockManagerId] = {
+    blockManagerIdByExecutor.get(executorId)
   }
 
   override def onStop(): Unit = {
