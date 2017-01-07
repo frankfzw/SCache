@@ -24,6 +24,7 @@ private[deploy] object DeployMessages {
   case class GetBlock(scacheBlockId: BlockId) extends FromDaemon
   case class RegisterShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) extends FromDaemon
   case class MapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends FromDaemon
+  case class GetShuffleStatus(appName: String, jobId: Int, shuffleId: Int) extends FromDaemon
 
   sealed trait  ToDeployClient
   case class RegisterClientSuccess(clientId: Int) extends ToDeployClient

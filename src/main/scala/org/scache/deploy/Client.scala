@@ -103,6 +103,8 @@ class Client(
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask) =>
       context.reply(registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
+    case GetShuffleStatus(appName, jobId, shuffleId) =>
+      context.reply(getShuffleStatus(appName, jobId, shuffleId))
     case _ =>
       logError("Empty message received !")
   }
@@ -114,6 +116,7 @@ class Client(
   }
 
   def mapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+    // TODO make sure all data is stored
     master.ask(MapEndToMaster(appName, jobId, shuffleId, mapId))
   }
 
@@ -174,6 +177,11 @@ class Client(
 
   private def getShuffleStatus(blockId: BlockId): ShuffleStatus = {
     val shuffleKey = ShuffleKey.fromString(blockId.toString)
+    mapOutputTracker.getShuffleStatuses(shuffleKey)
+  }
+
+  private def getShuffleStatus(appName: String, shuffleId: Int, jobId: Int): ShuffleStatus = {
+    val shuffleKey = ShuffleKey(appName, shuffleId, jobId)
     mapOutputTracker.getShuffleStatuses(shuffleKey)
   }
 
