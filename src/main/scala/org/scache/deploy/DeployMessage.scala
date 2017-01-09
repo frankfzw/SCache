@@ -28,5 +28,4 @@ private[deploy] object DeployMessages {
 
   sealed trait  ToDeployClient
   case class RegisterClientSuccess(clientId: Int) extends ToDeployClient
-  case class StartMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToDeployClient
 }

@@ -92,10 +92,6 @@ class Client(
     case MapEnd(appName, jobId, shuffleId, mapId) =>
       mapEnd(appName, jobId, shuffleId, mapId)
     // from master
-    case StartMapFetch(blockManagerId, appName, jobId, shuffleId, mapId) =>
-      startMapFetch(blockManagerId, appName, jobId, shuffleId, mapId)
-    case StartMapFetch(blockManagerId, appName, jobId, shuffleId, mapId) =>
-      startMapFetch(blockManagerId, appName, jobId, shuffleId, mapId)
     case _ =>
       logError("Empty message received !")
   }
@@ -116,28 +112,28 @@ class Client(
   }
 
   def mapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
-    // TODO make sure all data is stored
-    master.ask(MapEndToMaster(appName, jobId, shuffleId, mapId))
+    logInfo(s"Map $appName:$jobId:$shuffleId:$mapId finished")
+    // master.ask(MapEndToMaster(appName, jobId, shuffleId, mapId))
   }
 
-  def startMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
-    // only pre-fetch remote bytes
-    if (blockManagerId.executorId.equals(clientId.toString)) {
-      return
-    }
-    logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${blockManagerId.host}")
-    val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
-    val shuffleStatus = mapOutputTracker.getShuffleStatuses(shuffleKey)
-    val bIds = new ArrayBuffer[String]()
-    for (r <- shuffleStatus.reduceArray) {
-      if (r.host.equals(hostname)) {
-        // TODO start fetch and add call back to store block in memory
-        val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
-        bIds.append(bId.toString)
-      }
-    }
-    blockManager.asyncGetRemoteBlock(blockManagerId, bIds.toArray)
-  }
+  // def startMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+  //   // only pre-fetch remote bytes
+  //   if (blockManagerId.executorId.equals(clientId.toString)) {
+  //     return
+  //   }
+  //   logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${blockManagerId.host}")
+  //   val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
+  //   val shuffleStatus = mapOutputTracker.getShuffleStatuses(shuffleKey)
+  //   val bIds = new ArrayBuffer[String]()
+  //   for (r <- shuffleStatus.reduceArray) {
+  //     if (r.host.equals(hostname)) {
+  //       // TODO start fetch and add call back to store block in memory
+  //       val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
+  //       bIds.append(bId.toString)
+  //     }
+  //   }
+  //   blockManager.asyncGetRemoteBlock(blockManagerId, bIds.toArray)
+  // }
 
   def readBlockFromDaemon(blockId: BlockId, size: Int): Unit = {
     if (size == 0) {

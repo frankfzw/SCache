@@ -6,7 +6,7 @@ package org.scache.deploy
 
 import java.util.concurrent.ConcurrentHashMap
 
-import org.scache.deploy.DeployMessages.{Heartbeat, MapEndToMaster, RegisterClient, StartMapFetch}
+import org.scache.deploy.DeployMessages.{Heartbeat, MapEndToMaster, RegisterClient}
 import org.scache.io.ChunkedByteBuffer
 import org.scache.network.netty.NettyBlockTransferService
 import org.scache.scheduler.LiveListenerBus
@@ -57,13 +57,13 @@ private class Master(
 
 
   val blockManagerMasterEndpoint = rpcEnv.setupEndpoint(BlockManagerMaster.DRIVER_ENDPOINT_NAME,
-    new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf))
+    new BlockManagerMasterEndpoint(rpcEnv, isLocal, mapOutputTracker, conf))
   val blockManagerMaster = new BlockManagerMaster(blockManagerMasterEndpoint, conf, isDriver)
 
-  val blockManager = new BlockManager(ScacheConf.DRIVER_IDENTIFIER, rpcEnv, blockManagerMaster,
-    serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
+  // val blockManager = new BlockManager(ScacheConf.DRIVER_IDENTIFIER, rpcEnv, blockManagerMaster,
+  //   serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
 
-  blockManager.initialize()
+  // blockManager.initialize()
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("master-future", 128))
   // runTest()
@@ -95,7 +95,7 @@ private class Master(
     //   }
     case MapEndToMaster(appName, jobId, shuffleId, mapId) =>
       logInfo(s"Map task ${appName}_${jobId}_${shuffleId}_${mapId} finished on ${context.senderAddress.host}")
-      startMapFetch(context.senderAddress.host, appName, jobId, shuffleId, mapId)
+      // startMapFetch(context.senderAddress.host, appName, jobId, shuffleId, mapId)
     case _ =>
       logError("Empty message received !")
   }
@@ -137,28 +137,28 @@ private class Master(
     return clientId
   }
 
-  def startMapFetch(host: String, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+  // def startMapFetch(host: String, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
 
-    val shuffleStatus = mapOutputTracker.getShuffleStatuses(ShuffleKey(appName, jobId, shuffleId))
-    if (shuffleStatus == null) {
-      logError(s"Shuffle ${ShuffleKey(appName, jobId, shuffleId).toString()} is not registered")
-      return
-    }
-    Future {
-      val blockManagerId = hostnameToClientId.get(host) match {
-        case Some(clientId) =>
-          blockManagerMaster.getBlockManagerId(clientId.toString).get
-        case None =>
-          logError(s"Host $host is not registered")
-          return
-      }
-      for (info <- clientIdToInfo.values) {
-        logDebug(s"Start notify ${info.host} to fetch $jobId:$shuffleId:$mapId")
-        info.ref.send(StartMapFetch(blockManagerId, appName, jobId, shuffleId, mapId))
-      }
+  //   val shuffleStatus = mapOutputTracker.getShuffleStatuses(ShuffleKey(appName, jobId, shuffleId))
+  //   if (shuffleStatus == null) {
+  //     logError(s"Shuffle ${ShuffleKey(appName, jobId, shuffleId).toString()} is not registered")
+  //     return
+  //   }
+  //   Future {
+  //     val blockManagerId = hostnameToClientId.get(host) match {
+  //       case Some(clientId) =>
+  //         blockManagerMaster.getBlockManagerId(clientId.toString).get
+  //       case None =>
+  //         logError(s"Host $host is not registered")
+  //         return
+  //     }
+  //     for (info <- clientIdToInfo.values) {
+  //       logDebug(s"Start notify ${info.host} to fetch $jobId:$shuffleId:$mapId")
+  //       info.ref.send(StartMapFetch(blockManagerId, appName, jobId, shuffleId, mapId))
+  //     }
 
-    }(futureExecutionContext)
-  }
+  //   }(futureExecutionContext)
+  // }
 
 
   def runTest(): Unit = {
@@ -168,6 +168,10 @@ private class Master(
     val a1 = new Array[Byte](4000)
     val a2 = new Array[Byte](4000)
     val a3 = new Array[Byte](4000)
+    val blockManager = new BlockManager(ScacheConf.DRIVER_IDENTIFIER, rpcEnv, blockManagerMaster,
+      serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
+
+    blockManager.initialize()
 
     // Putting a1, a2  and a3 in memory and telling master only about a1 and a2
     blockManager.putSingle(blockIda1, a1, StorageLevel.MEMORY_ONLY)
@@ -224,4 +228,4 @@ object Master extends Logging {
   }
 }
 
-private[deploy] class ClientInfo(val id: Int, val host: String, val port: Int, val ref: RpcEndpointRef) extends Serializable
+private[scache] class ClientInfo(val id: Int, val host: String, val port: Int, val ref: RpcEndpointRef) extends Serializable

@@ -42,6 +42,8 @@ private[scache] object BlockManagerMessages {
   case class RemoveBroadcast(broadcastId: Long, removeFromDriver: Boolean = true)
     extends ToBlockManagerSlave
 
+  case class StartMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToBlockManagerSlave
+
   /**
    * Driver -> Executor message to trigger a thread dump.
    */
@@ -113,4 +115,5 @@ private[scache] object BlockManagerMessages {
   case class BlockManagerHeartbeat(blockManagerId: BlockManagerId) extends ToBlockManagerMaster
 
   case class HasCachedBlocks(executorId: String) extends ToBlockManagerMaster
+
 }

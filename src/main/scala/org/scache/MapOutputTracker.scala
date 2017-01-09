@@ -33,6 +33,7 @@ import org.scache.scheduler.{CacheId, CacheStatistics, MapStatus}
 import org.scache.storage.{BlockId, BlockManagerId, ScacheBlockId, ShuffleBlockId}
 import org.scache.util._
 
+import scala.concurrent.ExecutionContext
 import scala.util.Random
 
 private[scache] sealed trait MapOutputTrackerMessage
@@ -168,6 +169,10 @@ private[scache] class MapOutputTrackerMaster(conf: ScacheConf, isLocal: Boolean)
   protected val shuffleOutputStatus = new ConcurrentHashMap[ShuffleKey, ShuffleStatus]().asScala
 
   var hostnameToClientId: scala.collection.mutable.HashMap[String, Int] = _
+  private val shuffleMapBlocksStatus = new ConcurrentHashMap[ShuffleKey, Array[Int]]().asScala
+
+
+
 
   /** Cache a serialized version of the output statuses for each shuffle to send them out faster */
 
@@ -192,6 +197,8 @@ private[scache] class MapOutputTrackerMaster(conf: ScacheConf, isLocal: Boolean)
       shuffleStatus.reduceArray(i) = new ReduceStatus(i, clientList(p), Random.shuffle(backups).toArray.slice(0, numRep), numMapTask)
     }
     shuffleOutputStatus.putIfAbsent(shuffleKey, shuffleStatus)
+    val mapBlocksStatus = new Array[Int](numMapTask).map(x => numReduceTask)
+    shuffleMapBlocksStatus.putIfAbsent(shuffleKey, mapBlocksStatus)
     logInfo(s"Register shuffle $appName:$jobId:$shuffleId with map:$numMapTask and reduce:$numReduceTask")
 
     true
@@ -222,6 +229,17 @@ private[scache] class MapOutputTrackerMaster(conf: ScacheConf, isLocal: Boolean)
   //   }
   // }
 
+  def updateMapBlocksStatus(blockId: BlockId): Int = {
+    val bId = blockId.asInstanceOf[ScacheBlockId]
+    val shuffleKey = ShuffleKey(bId.app, bId.jobId, bId.shuffleId)
+    if (shuffleMapBlocksStatus.contains(shuffleKey)) {
+      shuffleMapBlocksStatus(shuffleKey)(bId.mapId) -= 1
+      return shuffleMapBlocksStatus(shuffleKey)(bId.mapId)
+    } else {
+      logError(s"Shuffle ${shuffleKey.toString()} is not registered")
+      return -1
+    }
+  }
 
 
 

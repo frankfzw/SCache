@@ -323,8 +323,22 @@ private[scache] class BlockManager(
 
 
   //TODO: fill this
-  private def getShuffleBlock(blockId: ScacheBlockId): ManagedBuffer = {
-    null
+  def startMapFetch(bmId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+    // only pre-fetch remote bytes
+    if (bmId.executorId.equals(executorId)) {
+      return
+    }
+    logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${bmId.host}")
+    val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
+    val shuffleStatus = mapOutputTracker.getShuffleStatuses(shuffleKey)
+    val bIds = new ArrayBuffer[String]()
+    for (r <- shuffleStatus.reduceArray) {
+      if (r.host.equals(blockManagerId.host)) {
+        val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
+        bIds.append(bId.toString)
+      }
+    }
+    asyncGetRemoteBlock(bmId, bIds.toArray)
   }
 
   /**
@@ -589,16 +603,16 @@ private[scache] class BlockManager(
     None
   }
 
-  def asyncGetRemoteBlock(blockManagerId: BlockManagerId, blockIds: Array[String]): Unit = {
-    if (blockManagerId.executorId.equals(executorId)) {
+  def asyncGetRemoteBlock(bmId: BlockManagerId, blockIds: Array[String]): Unit = {
+    if (bmId.executorId.equals(executorId)) {
       logWarning(s"Got a local block fetch in remote fetch handler")
       return
     }
-    logDebug(s"Start to fetch remote block from ${blockManagerId.host}")
-    shuffleClient.fetchBlocks(blockManagerId.host, blockManagerId.port, blockManagerId.executorId, blockIds,
+    logDebug(s"Start to fetch remote block from ${bmId.host}")
+    shuffleClient.fetchBlocks(bmId.host, bmId.port, bmId.executorId, blockIds,
       new BlockFetchingListener {
         override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
-          logError(s"Fail to fetch block: $blockId from ${blockManagerId.host}")
+          logError(s"Fail to fetch block: $blockId from ${bmId.host}")
           throw exception
         }
 
@@ -607,7 +621,7 @@ private[scache] class BlockManager(
           val buf = ByteBuffer.wrap(bytes)
           val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
           putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
-          logDebug(s"Got remote block ${blockId} from ${blockManagerId.host} with size ${bytes.length}")
+          logDebug(s"Got remote block ${blockId} from ${bmId.host} with size ${bytes.length}")
         }
       })
   }

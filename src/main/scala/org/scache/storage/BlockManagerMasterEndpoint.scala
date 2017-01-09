@@ -19,16 +19,14 @@ package org.scache.storage
 
 import java.util.{HashMap => JHashMap}
 
+import org.scache.MapOutputTrackerMaster
+
 import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-
-import org.scache.util.ScacheConf
-import org.scache.util.Logging
+import org.scache.util.{ScacheConf, Logging, Utils, ThreadUtils}
 import org.scache.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
-import org.scache.scheduler._
 import org.scache.storage.BlockManagerMessages._
-import org.scache.util.{ThreadUtils, Utils}
 
 /**
  * BlockManagerMasterEndpoint is an [[ThreadSafeRpcEndpoint]] on the master node to track statuses
@@ -38,6 +36,7 @@ private[scache]
 class BlockManagerMasterEndpoint(
     override val rpcEnv: RpcEnv,
     val isLocal: Boolean,
+    val mapOutputTrackerMaster: MapOutputTrackerMaster,
     conf: ScacheConf)
   extends ThreadSafeRpcEndpoint with Logging {
 
@@ -351,6 +350,18 @@ class BlockManagerMasterEndpoint(
     } else {
       locations = new mutable.HashSet[BlockManagerId]
       blockLocations.put(blockId, locations)
+      // update block status in mapoutputtracker, it may trigger the map pre-fetch
+      if (mapOutputTrackerMaster.updateMapBlocksStatus(blockId) == 0) {
+        Future {
+          val sbId = blockId.asInstanceOf[ScacheBlockId]
+          for (info <- blockManagerInfo.values) {
+            val res = info.slaveEndpoint.askWithRetry[Boolean](StartMapFetch(blockManagerId, sbId.app, sbId.jobId, sbId.shuffleId, sbId.mapId))
+            if (!res) {
+              logError(s"Start map fetch notification failed on ${info.blockManagerId.host}")
+            }
+          }
+        }
+      }
     }
 
     if (storageLevel.isValid) {
