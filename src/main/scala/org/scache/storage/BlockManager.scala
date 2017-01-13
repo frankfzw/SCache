@@ -42,6 +42,8 @@ import org.scache.util._
 import org.scache.io.ChunkedByteBuffer
 import org.scache.network.transfer.BlockFetchingListener
 
+import scala.collection.mutable
+
 
 object DataReadMethod extends Enumeration with Serializable {
   type DataReadMethod = Value
@@ -148,6 +150,8 @@ private[scache] class BlockManager(
   @volatile private var cachedPeers: Seq[BlockManagerId] = _
   private val peerFetchLock = new Object
   private var lastPeerFetchTime = 0L
+
+  private val blocksOnTheAir = new mutable.HashSet[BlockId]();
 
   /**
    * Initializes the BlockManager with the given appId. This is not performed in the constructor as
@@ -322,7 +326,6 @@ private[scache] class BlockManager(
   }
 
 
-  //TODO: fill this
   def startMapFetch(bmId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
     // only pre-fetch remote bytes
     if (bmId.executorId.equals(executorId)) {
@@ -608,11 +611,18 @@ private[scache] class BlockManager(
       logWarning(s"Got a local block fetch in remote fetch handler")
       return
     }
+    blocksOnTheAir.synchronized {
+      blockIds.foreach(id => blocksOnTheAir.add(BlockId.apply(id)))
+    }
     logDebug(s"Start to fetch remote block from ${bmId.host}")
     shuffleClient.fetchBlocks(bmId.host, bmId.port, bmId.executorId, blockIds,
       new BlockFetchingListener {
         override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
           logError(s"Fail to fetch block: $blockId from ${bmId.host}")
+          blocksOnTheAir.synchronized {
+            blocksOnTheAir.remove(BlockId.apply(blockId))
+            blocksOnTheAir.notifyAll()
+          }
           throw exception
         }
 
@@ -622,8 +632,31 @@ private[scache] class BlockManager(
           val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
           putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
           logDebug(s"Got remote block ${blockId} from ${bmId.host} with size ${bytes.length}")
+          blocksOnTheAir.synchronized {
+            blocksOnTheAir.remove(BlockId.apply(blockId))
+            blocksOnTheAir.notifyAll()
+          }
         }
       })
+  }
+
+  def onTheAir(blockId: BlockId): Boolean = {
+    blocksOnTheAir.synchronized {
+      if (blocksOnTheAir.contains(blockId)) {
+        return true
+      }
+      return false
+    }
+  }
+
+  def waitForBlock(blockId: BlockId): Future[Unit] = {
+    Future {
+      blocksOnTheAir.synchronized {
+        while (blocksOnTheAir.contains(blockId)) {
+          blocksOnTheAir.wait()
+        }
+      }
+    } (futureExecutionContext)
   }
 
   /**

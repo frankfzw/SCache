@@ -20,7 +20,8 @@ import org.scache.util._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.control.Exception
 import scala.util.{Failure, Random, Success}
 
@@ -87,8 +88,6 @@ class Client(
 
   override def receive: PartialFunction[Any, Unit] = {
     // from deamon
-    case PutBlock(blockId, size) =>
-      readBlockFromDaemon(blockId, size)
     case MapEnd(appName, jobId, shuffleId, mapId) =>
       mapEnd(appName, jobId, shuffleId, mapId)
     // from master
@@ -97,10 +96,14 @@ class Client(
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    case PutBlock(blockId, size) =>
+      readBlockFromDaemon(context, blockId, size)
     case RegisterShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask) =>
       context.reply(registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
     case GetShuffleStatus(appName, jobId, shuffleId) =>
       context.reply(getShuffleStatus(appName, jobId, shuffleId))
+    case GetBlock(blockId) =>
+      sendBlockToDaemon(context, blockId)
     case _ =>
       logError("Empty message received !")
   }
@@ -135,7 +138,7 @@ class Client(
   //   blockManager.asyncGetRemoteBlock(blockManagerId, bIds.toArray)
   // }
 
-  def readBlockFromDaemon(blockId: BlockId, size: Int): Unit = {
+  def readBlockFromDaemon(context: RpcCallContext, blockId: BlockId, size: Int): Unit = {
     if (size == 0) {
       val data = new Array[Byte](0)
       val buf = ByteBuffer.wrap(data)
@@ -146,7 +149,8 @@ class Client(
     Future {
       try {
         val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
-        val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+        val channel = FileChannel.open(f.toPath,
+          StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.DELETE_ON_CLOSE)
         val buffer = channel.map(MapMode.READ_WRITE, 0, size)
         // close the channel and delete the tmp file
         val data = new Array[Byte](size)
@@ -157,6 +161,7 @@ class Client(
         blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.MEMORY_ONLY)
         logDebug(s"Put block $blockId with size $size successfully")
         channel.close()
+        context.reply(true)
 
         // start block transmission immediately
         // val shuffleStatus = getShuffleStatus(blockId)
@@ -165,10 +170,55 @@ class Client(
       } catch {
         case e: Exception =>
           logError(s"Copy block $blockId error, ${e.getMessage}")
+          context.reply(false)
       }
 
     }(futureExecutionContext)
 
+  }
+
+  def sendBlockToDaemon(context: RpcCallContext, blockId: BlockId): Unit = {
+    blockManager.getLocalBytes(blockId) match {
+      case Some(buffer) =>
+        Future {
+          val chunks = buffer.getChunks()
+          // it should be a single chunked byte buffer
+          assert(chunks.size == 1)
+          val bytes = new Array[Byte](chunks(0).remaining())
+          chunks(0).get(bytes)
+          val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
+          val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+          val writeBuf = channel.map(MapMode.READ_WRITE, 0, bytes.length)
+          writeBuf.put(bytes, 0, bytes.length)
+          context.reply(bytes.length)
+        }(futureExecutionContext)
+      case None =>
+        // is the block on the air?
+        Future {
+          if (blockManager.onTheAir(blockId)) {
+            Await.result(blockManager.waitForBlock(blockId), Duration.Inf)
+            // try again
+            blockManager.getLocalBytes(blockId) match {
+              case Some(buffer) =>
+                val chunks = buffer.getChunks()
+                // it should be a single chunked byte buffer
+                assert(chunks.size == 1)
+                val bytes = new Array[Byte](chunks(0).remaining())
+                chunks(0).get(bytes)
+                val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
+                val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+                val writeBuf = channel.map(MapMode.READ_WRITE, 0, bytes.length)
+                writeBuf.put(bytes, 0, bytes.length)
+                context.reply(bytes.length)
+              case None =>
+                context.reply(-1)
+            }
+          } else {
+            logError(s"Can't find block ${blockId.toString} in local")
+            context.reply(-1)
+          }
+        }(futureExecutionContext)
+    }
   }
 
   private def getShuffleStatus(blockId: BlockId): ShuffleStatus = {
