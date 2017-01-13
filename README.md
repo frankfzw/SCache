@@ -13,7 +13,7 @@ A distributed memory cache system for shuffle in map-reduce
 
 5. Build hadoop from [here](https://github.com/frankfzw/hadoop/tree/scache)
 
-6. Edit `etc/hadoop/mapred-site.xml`, set `mapreduce.job.map.output.collector.class` to `org.apache.hadoop.mapred.MapTask$ScacheOutputBuffer` and `mapreduce.scache.home` to `your/scache/home`
+6. Edit `etc/hadoop/mapred-site.xml`, set `mapreduce.job.map.output.collector.class` to `org.apache.hadoop.mapred.MapTask$ScacheOutputBuffer` , set `mapreduce.job.reduce.shuffle.consumer.plugin.class` to `org.apache.hadoop.mapreduce.task.reduce.ScacheShuffle` and set `mapreduce.scache.home` to `your/scache/home`
 
 6. Copy `config-1.2.1.jar`, `scache_2.11-0.1-SNAPSHOT.jar` and `scala-library.jar` to `hadoop-home/share/hadoop/yarn/lib`. You can find these jars in local maven/ivy repository and local scala home.
 
