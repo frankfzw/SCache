@@ -352,8 +352,9 @@ class BlockManagerMasterEndpoint(
       blockLocations.put(blockId, locations)
       // update block status in mapoutputtracker, it may trigger the map pre-fetch
       if (mapOutputTrackerMaster.updateMapBlocksStatus(blockId) == 0) {
+        val sbId = blockId.asInstanceOf[ScacheBlockId]
+        logInfo(s"Start map fetch notification for ${sbId.app}_${sbId.shuffleId}_${sbId.mapId}")
         Future {
-          val sbId = blockId.asInstanceOf[ScacheBlockId]
           for (info <- blockManagerInfo.values) {
             val res = info.slaveEndpoint.askWithRetry[Boolean](StartMapFetch(blockManagerId, sbId.app, sbId.jobId, sbId.shuffleId, sbId.mapId))
             if (!res) {

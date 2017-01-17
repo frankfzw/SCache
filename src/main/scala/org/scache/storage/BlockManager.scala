@@ -611,17 +611,15 @@ private[scache] class BlockManager(
       logWarning(s"Got a local block fetch in remote fetch handler")
       return
     }
-    blocksOnTheAir.synchronized {
-      blockIds.foreach(id => blocksOnTheAir.add(BlockId.apply(id)))
-    }
     logDebug(s"Start to fetch remote block from ${bmId.host}")
     shuffleClient.fetchBlocks(bmId.host, bmId.port, bmId.executorId, blockIds,
       new BlockFetchingListener {
         override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
           logError(s"Fail to fetch block: $blockId from ${bmId.host}")
           blocksOnTheAir.synchronized {
-            blocksOnTheAir.remove(BlockId.apply(blockId))
-            blocksOnTheAir.notifyAll()
+            if (blocksOnTheAir.remove(BlockId.apply(blockId))) {
+              blocksOnTheAir.notifyAll()
+            }
           }
           throw exception
         }
@@ -633,19 +631,29 @@ private[scache] class BlockManager(
           putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
           logDebug(s"Got remote block ${blockId} from ${bmId.host} with size ${bytes.length}")
           blocksOnTheAir.synchronized {
-            blocksOnTheAir.remove(BlockId.apply(blockId))
-            blocksOnTheAir.notifyAll()
+            if (blocksOnTheAir.remove(BlockId.apply(blockId))) {
+              blocksOnTheAir.notifyAll()
+            }
           }
         }
       })
   }
 
-  def onTheAir(blockId: BlockId): Boolean = {
+  def addBlockOnTheAir(blockId: BlockId): Boolean = {
     blocksOnTheAir.synchronized {
       if (blocksOnTheAir.contains(blockId)) {
+        return false
+      } else {
+        blocksOnTheAir.add(blockId)
         return true
       }
-      return false
+    }
+  }
+
+  def removeBlockOnTheAir(blockId: BlockId): Unit = {
+    blocksOnTheAir.synchronized {
+      blocksOnTheAir.remove(blockId)
+      blocksOnTheAir.notifyAll()
     }
   }
 

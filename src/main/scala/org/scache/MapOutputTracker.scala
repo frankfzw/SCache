@@ -195,6 +195,7 @@ private[scache] class MapOutputTrackerMaster(conf: ScacheConf, isLocal: Boolean)
       val p = i % clientList.size
       val backups = (for (c <- clientList if c != clientList(p)) yield c)
       shuffleStatus.reduceArray(i) = new ReduceStatus(i, clientList(p), Random.shuffle(backups).toArray.slice(0, numRep), numMapTask)
+      logDebug(s"Allocate shuffle ${shuffleKey.toString()} reduce $i to host ${clientList(p)}")
     }
     shuffleOutputStatus.putIfAbsent(shuffleKey, shuffleStatus)
     val mapBlocksStatus = new Array[Int](numMapTask).map(x => numReduceTask)

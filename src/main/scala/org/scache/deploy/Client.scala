@@ -6,8 +6,9 @@ import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.FileChannel.MapMode
 import java.nio.file.StandardOpenOption
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{TimeoutException, TimeUnit}
 
+import org.apache.commons.httpclient.util.TimeoutController.TimeoutException
 import org.scache.deploy.DeployMessages._
 import org.scache.io.ChunkedByteBuffer
 import org.scache.network.netty.NettyBlockTransferService
@@ -195,8 +196,13 @@ class Client(
       case None =>
         // is the block on the air?
         Future {
-          if (blockManager.onTheAir(blockId)) {
-            Await.result(blockManager.waitForBlock(blockId), Duration.Inf)
+          if (!blockManager.addBlockOnTheAir(blockId)) {
+            logWarning(s"Block ${blockId.toString} is fetching")
+          }
+          try {
+            val timeout = conf.getTimeAsSeconds("scache.block.fetching.timeout", "10s")
+            logDebug(s"Block ${blockId.toString} is still on the air, let wait for ${timeout} seconds")
+            Await.result(blockManager.waitForBlock(blockId), Duration(timeout, TimeUnit.SECONDS))
             // try again
             blockManager.getLocalBytes(blockId) match {
               case Some(buffer) =>
@@ -211,11 +217,14 @@ class Client(
                 writeBuf.put(bytes, 0, bytes.length)
                 context.reply(bytes.length)
               case None =>
+                logError(s"Block ${blockId.toString} not found")
                 context.reply(-1)
             }
-          } else {
-            logError(s"Can't find block ${blockId.toString} in local")
-            context.reply(-1)
+          } catch {
+            case te: java.util.concurrent.TimeoutException =>
+              blockManager.removeBlockOnTheAir(blockId)
+              logError(s"Block ${blockId.toString} fetching timeout")
+              context.reply(-1)
           }
         }(futureExecutionContext)
     }
