@@ -19,6 +19,7 @@ package org.scache.storage
 
 import java.io._
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
 
 import com.google.common.io.ByteStreams
 import org.scache.memory.MemoryMode
@@ -56,6 +57,8 @@ private[scache] class BlockResult(
     val data: Iterator[Any],
     val readMethod: DataReadMethod.Value,
     val bytes: Long)
+
+private[storage] class BlockFetchLock(var waiting: Int, val lock: Object)
 
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
@@ -151,8 +154,7 @@ private[scache] class BlockManager(
   private val peerFetchLock = new Object
   private var lastPeerFetchTime = 0L
 
-  private val blocksOnTheAir = new mutable.HashSet[BlockId]();
-
+  private val blocksOnTheAir = new ConcurrentHashMap[BlockId, BlockFetchLock]();
   /**
    * Initializes the BlockManager with the given appId. This is not performed in the constructor as
    * the appId may not be known at BlockManager instantiation time (in particular for the driver,
@@ -616,9 +618,11 @@ private[scache] class BlockManager(
       new BlockFetchingListener {
         override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
           logError(s"Fail to fetch block: $blockId from ${bmId.host}")
-          blocksOnTheAir.synchronized {
-            if (blocksOnTheAir.remove(BlockId.apply(blockId))) {
-              blocksOnTheAir.notifyAll()
+          if (blocksOnTheAir.contains(blockId)) {
+            val fetchLock = blocksOnTheAir.remove(blockId)
+            fetchLock.lock.synchronized {
+              fetchLock.waiting = 0
+              fetchLock.lock.notifyAll()
             }
           }
           throw exception
@@ -630,9 +634,11 @@ private[scache] class BlockManager(
           val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
           putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
           logDebug(s"Got remote block ${blockId} from ${bmId.host} with size ${bytes.length}")
-          blocksOnTheAir.synchronized {
-            if (blocksOnTheAir.remove(BlockId.apply(blockId))) {
-              blocksOnTheAir.notifyAll()
+          if (blocksOnTheAir.contains(blockId)) {
+            val fetchLock = blocksOnTheAir.remove(blockId)
+            fetchLock.lock.synchronized {
+              fetchLock.waiting = 0
+              fetchLock.lock.notifyAll()
             }
           }
         }
@@ -640,28 +646,28 @@ private[scache] class BlockManager(
   }
 
   def addBlockOnTheAir(blockId: BlockId): Boolean = {
-    blocksOnTheAir.synchronized {
-      if (blocksOnTheAir.contains(blockId)) {
-        return false
-      } else {
-        blocksOnTheAir.add(blockId)
-        return true
-      }
+    if (blocksOnTheAir.containsKey(blockId)) {
+      return false
     }
+    val fetchLock = new BlockFetchLock(1, new Object)
+    blocksOnTheAir.putIfAbsent(blockId, fetchLock)
+    return true
   }
 
   def removeBlockOnTheAir(blockId: BlockId): Unit = {
-    blocksOnTheAir.synchronized {
-      blocksOnTheAir.remove(blockId)
-      blocksOnTheAir.notifyAll()
+    val fetchLock = blocksOnTheAir.remove(blockId)
+    fetchLock.lock.synchronized {
+      fetchLock.waiting = 0
+      fetchLock.lock.notifyAll()
     }
   }
 
   def waitForBlock(blockId: BlockId): Future[Unit] = {
     Future {
-      blocksOnTheAir.synchronized {
-        while (blocksOnTheAir.contains(blockId)) {
-          blocksOnTheAir.wait()
+      val fetchLock = blocksOnTheAir.get(blockId)
+      fetchLock.lock.synchronized {
+        while (fetchLock.waiting > 0) {
+          fetchLock.lock.wait()
         }
       }
     } (futureExecutionContext)
