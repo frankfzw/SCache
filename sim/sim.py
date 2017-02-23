@@ -7,7 +7,8 @@ import pandas as pd
 
 trace_path = '/home/frankfzw/SCache/sim/2012-10/attempt.csv'
 res_path = '/home/frankfzw/SCache/sim/res'
-schedule = ['fifo', 'round_robin']
+schedule = ['fifo', 'round_robin', 'ideal']
+# schedule = ['ideal']
 hosts_num = 10
 
 def deal_na_int(x):
@@ -25,29 +26,67 @@ reduce_talbe = raw_talbe.loc[raw_talbe['tasktype'] == 'r']
 def round_robin_schedule(reduce_tasks, num_hosts):
 	times = np.zeros(num_hosts)
 	tasks_size = len(reduce_tasks.index)
+	finish_time = np.array(list(reduce_tasks['finishTime'].values))
+	start_time = np.array(list(reduce_tasks['startTime'].values))
+	run_time = finish_time - start_time
 	for i in range(tasks_size):
-		r = reduce_tasks.iloc[i]
 		# print '{}\t{}'.format(r['startTime'], r['finishTime'])
-		times[i % num_hosts] += r['finishTime'] - r['startTime']
+		times[i % num_hosts] += run_time[i]
+	print sum(times)
+	print times
 	return np.amax(times)
 
 def fifo_schedule(reduce_tasks, num_hosts):
 	times = np.zeros(num_hosts)
 	tasks_size = len(reduce_tasks.index)
-	for i in range(min(num_hosts, tasks_size)):
-		r = reduce_tasks.iloc[i]
-		times[i] += r['finishTime'] - r['startTime']
-	for i in range(num_hosts, tasks_size):
-		times = np.sort(times)
-		r = reduce_tasks.iloc[i]
-		times[0] += r['finishTime'] - r['startTime']
-	return np.amax(times)
+	finish_time = np.array(list(reduce_tasks['finishTime'].values))
+	start_time = np.array(list(reduce_tasks['startTime'].values))
+	run_time = finish_time - start_time
+	if tasks_size < num_hosts:
+		for i in range(tasks_size):
+			times[i] += run_time[i]
+	else:
+		for i in range(tasks_size):
+			times[0] += run_time[i]
+			times = np.sort(times)
+
+	print sum(times)
+	print times
+	return times[-1]
+
+def ideal_schedule(reduce_tasks, num_hosts):
+	times = np.zeros(num_hosts)
+	tasks_size = len(reduce_tasks.index)
+	finish_time = np.array(list(reduce_tasks['finishTime'].values))
+	start_time = np.array(list(reduce_tasks['startTime'].values))
+	run_time = finish_time - start_time
+	if tasks_size < num_hosts:
+		for i in range(tasks_size):
+			times[i] += run_time[i]
+	else:
+		target_time = sum(run_time) / num_hosts
+		run_time = np.sort(run_time)
+		tid = tasks_size - 1
+		while tid >= 0:
+			for i in range(num_hosts):
+				if (times[i] > target_time) or (tid < 0):
+					break
+				times[i] += run_time[tid]
+				tid -= 1
+			times = np.sort(times)
+	print run_time
+	print sum(times)
+	print times
+	return times[-1]
+
 
 def do_schedule(reduce_tasks, num_hosts, scheme):
 	if (scheme == 'fifo'):
 		return fifo_schedule(reduce_tasks, num_hosts)
 	elif (scheme == 'round_robin'):
 		return round_robin_schedule(reduce_tasks, num_hosts)
+	elif (scheme == 'ideal'):
+		return ideal_schedule(reduce_tasks, num_hosts)
 	else:
 		print 'Wrong scheme %s' % scheme
 		return None
@@ -62,16 +101,21 @@ def main():
 	# delete empty ones
 	for jid in jobids_list:
 		reduce_tasks = reduce_talbe.loc[(reduce_talbe['jobid'] == jid) & (reduce_talbe['status'] == 0)]
-		if (len(reduce_tasks.index) == 0):
+		if (len(reduce_tasks.index) == 0 or len(reduce_tasks.index) <= hosts_num):
 			jobids.remove(jid)
 
 	jobids = np.array(list(jobids))
 
 	for scheme in schedule:
+		print 'Processing %s' % scheme
 		res = np.zeros(len(jobids))
 		for i in range(len(jobids)):
+			if jobids[i] != 4817:
+				continue
 			reduce_tasks = reduce_talbe.loc[(reduce_talbe['jobid'] == jobids[i]) & (reduce_talbe['status'] == 0)]
 			t = do_schedule(reduce_tasks, hosts_num, scheme)
+			if t is None:
+				break
 			res[i] = t
 		df = pd.DataFrame({'jid':jobids, 'time':res})
 		df.to_csv('{}/{}.csv'.format(res_path, scheme))
