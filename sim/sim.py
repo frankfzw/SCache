@@ -7,15 +7,15 @@ import pandas as pd
 
 trace_path = '/home/frankfzw/SCache/sim/2012-10/attempt.csv'
 res_path = '/home/frankfzw/SCache/sim/res'
-# schedule = ['fifo', 'round_robin', 'ideal', 'scache']
-schedule = ['scache', 'fifo']
+schedule = ['fifo', 'round_robin', 'ideal', 'scache']
+# schedule = ['scache', 'fifo']
 hosts_num = 10
 
 def deal_na_int(x):
-	if (x == None):
+	if (x == '' or x == None):
 		return -1
 	else:
-		return x
+		return int(x)
 
 
 field_names = {'jtid': int, 'jobid': int, 'tasktype': str, 'taskid': int, 'attempt': int, 'startTime': int, 'shuffleTime': int, 'sortTime': int, 'finishTime': int, 'status': int, 'rack': str, 'hostname': str}
@@ -23,12 +23,25 @@ converters = {'shuffleTime': deal_na_int, 'sortTime': deal_na_int}
 raw_talbe = pd.read_csv(filepath_or_buffer=trace_path, dtype=field_names, converters=converters)
 reduce_talbe = raw_talbe.loc[raw_talbe['tasktype'] == 'r']
 
+def find_min(times):
+	tag = times[0]
+	index = 0
+	for i in range(len(times)):
+		if (times[i] < tag):
+			tag = times[i]
+			index = i
+	return index
+
+
 def round_robin_schedule(reduce_tasks, num_hosts):
 	times = np.zeros(num_hosts)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
+	shuffle_time = np.array(list(reduce_tasks['shuffleTime'].values))
+	sort_time = np.array(list(reduce_tasks['sortTime'].values))
 	start_time = np.array(list(reduce_tasks['startTime'].values))
-	run_time = finish_time - start_time
+	shuffle_time = sort_time - shuffle_time
+	run_time = finish_time - start_time - shuffle_time
 	for i in range(tasks_size):
 		# print '{}\t{}'.format(r['startTime'], r['finishTime'])
 		times[i % num_hosts] += run_time[i]
@@ -47,45 +60,43 @@ def fifo_schedule(reduce_tasks, num_hosts):
 			times[i] += run_time[i]
 	else:
 		for i in range(tasks_size):
-			times[0] += run_time[i]
-			times = np.sort(times)
-
-	print sum(times)
-	print times
-	return times[-1]
+			index = find_min(times)
+			times[index] += run_time[i]
+	return np.max(times)
 
 def scache_schedule(reduce_tasks, num_hosts):
 	times = np.zeros(num_hosts)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
 	start_time = np.array(list(reduce_tasks['startTime'].values))
-	run_time = finish_time - start_time
+	shuffle_time = np.array(list(reduce_tasks['shuffleTime'].values))
+	sort_time = np.array(list(reduce_tasks['sortTime'].values))
+	shuffle_time = sort_time - shuffle_time
+	run_time = finish_time - start_time - shuffle_time
 	schedule_turns = tasks_size / num_hosts + 1
-	print run_time
-	for i in range(schedule_turns):
-		print 'Turn: %d' % i
-		turn_start_index = i * num_hosts
-		turn_end_index = min((i * num_hosts + num_hosts), tasks_size)
-		tasks_turn = run_time[turn_start_index:turn_end_index]
-		tasks_turn = np.sort(tasks_turn)
-		print tasks_turn
-		print 'Before schedule'
-		print times
-		for j in range(len(tasks_turn)):
-			times[j] += tasks_turn[len(tasks_turn)-j-1]
-		times = np.sort(times)
-		print 'After schedule'
-		print times
-	print sum(times)
-	return times[-1]
+	if tasks_size < num_hosts:
+		for i in range(tasks_size):
+			times[i] += run_time[i]
+	else:
+		for i in range(num_hosts):
+			times[i] += run_time[i]
+		for i in range(num_hosts, tasks_size):
+			index = find_min(times)
+			if shuffle_time[i] > times[index]:
+				times[index] += (shuffle_time[i] - times[index])
+			times[index] += run_time[i]
+	return np.max(times)
 
 
 def ideal_schedule(reduce_tasks, num_hosts):
 	times = np.zeros(num_hosts)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
+	shuffle_time = np.array(list(reduce_tasks['shuffleTime'].values))
+	sort_time = np.array(list(reduce_tasks['sortTime'].values))
 	start_time = np.array(list(reduce_tasks['startTime'].values))
-	run_time = finish_time - start_time
+	shuffle_time = sort_time - shuffle_time
+	run_time = finish_time - start_time - shuffle_time
 	if tasks_size < num_hosts:
 		for i in range(tasks_size):
 			times[i] += run_time[i]
@@ -104,7 +115,7 @@ def ideal_schedule(reduce_tasks, num_hosts):
 	# print run_time
 	# print sum(times)
 	# print times
-	return times[-1]
+	return np.max(times)
 
 
 def do_schedule(reduce_tasks, num_hosts, scheme):
@@ -139,8 +150,8 @@ def main():
 		print 'Processing %s' % scheme
 		res = np.zeros(len(jobids))
 		for i in range(len(jobids)):
-			if jobids[i] != 4817:
-				continue
+			# if jobids[i] != 4817:
+			# 	continue
 			reduce_tasks = reduce_talbe.loc[(reduce_talbe['jobid'] == jobids[i]) & (reduce_talbe['status'] == 0)]
 			t = do_schedule(reduce_tasks, hosts_num, scheme)
 			if t is None:
