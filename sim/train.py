@@ -9,11 +9,8 @@ class Train:
 	def __init__(self, map_num, reduce_num, alpha):
 		self.map_num = map_num
 		self.reduce_num = reduce_num
-		self.para_matrix = np.zeros((3, reduce_num))
-		self.reg = linear_model.Ridge(fit_intercept=False)
-		alpha_arr = np.array(reduce_num)
-		alpha_arr.fill(alpha)
-		self.reg.set_params(alpha=alpha_arr)
+		self.reg = linear_model.LinearRegression()
+		
 
 	# samples_in and samples_out are matrices which have same row number
 	# e.g.
@@ -24,6 +21,9 @@ class Train:
 
 	def predict(self, inputs):
 		return self.reg.predict(inputs)
+
+	def score(self, X_validate, Y_validate):
+		return self.reg.score(X_validate, Y_validate)
 
 def parse_log(file_path):
 	hosts_map = {}
@@ -73,8 +73,8 @@ def main():
 
 	model = Train(len(map_ids), len(reduce_ids), 0.5)
 	model.train(X[0:2], Y[0:2])
-	print model.predict(X[2:])
-	print Y[2:]
+	print model.score(X[2:], Y[2:])
+	
 
 
 
