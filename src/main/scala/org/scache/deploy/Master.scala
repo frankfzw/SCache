@@ -219,7 +219,7 @@ object Master extends Logging {
     // conf.set("scache.app.id", "test")
     logInfo("Start Master")
     val rpcEnv = RpcEnv.create(SYSTEM_NAME, arguments.host, arguments.port, conf)
-    val masterEndpoint = rpcEnv.setupEndpoint("Master",
+    val masterEndpoint = rpcEnv.setupEndpoint("ScacheMaster",
       new Master(rpcEnv, arguments.host, conf, true, arguments.isLocal))
     rpcEnv.awaitTermination()
   //   logInfo(conf.getInt("scache.memory", 1).toString)
