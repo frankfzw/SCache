@@ -5,7 +5,7 @@ from sklearn import linear_model
 import pandas as pd
 import os
 
-tmp_dir = '/home/frankfzw/tmp'
+tmp_dir = '/mnt/d/tmp'
 
 
 class Train:
@@ -30,20 +30,32 @@ class Train:
 
 # df_map [host, mapid, size]
 # df_reduce [mapid, reduceid, prob]
-# return [host, reduceid, pred_size]
+# return [host, reduceid, pred_size, pre]
 def predict_with_sample(df_map, df_reduce):
 	map_sum = np.sum(df_map['size'].values)
 	map_num = len(df_map['mapid'].values)
+	map_size = df_map[['mapid', 'size']].values.tolist()
+	map_size = sorted(map_size, key=lambda x:x[0])
 	res = []
-	reduceid = df_reduce['reduceid'].values
+	reduceid = list(set(df_reduce['reduceid'].values.tolist()))
 	for rid in reduceid:
-		prob = df_reduce.loc[df_reduce['reduceid'] == rid]['prob'].values.tolist()[0]
-		map_id = df_reduce.loc[df_reduce['reduceid'] == rid]['mapid'].values.tolist()[0] 
-		map_line = df_map.loc[df_map['mapid'] == map_id].values.tolist()
-		map_size = map_line[0][2]
-		host = map_line[0][0]
-		reduce_size = map_size * prob + (map_sum - map_size) / (map_num - 1) * (1 - prob)
-		res.append([host, rid, reduce_size])
+		# prob = df_reduce.loc[df_reduce['reduceid'] == rid][['mapid', 'prob']].values.tolist()
+		prob = df_reduce.loc[df_reduce['reduceid'] == rid][['mapid', 'prob']]
+		join_df = prob.join(df_map.set_index('mapid'), how='left', on='mapid').values.tolist()
+		max_host = 0
+		max_pre = 0
+		# find max
+		for p in join_df:
+			if p[1] > max_pre:
+				max_pre = p[1]
+				max_host = p[2]
+		pre_size = np.sum(map(lambda x: float(x[3]) * x[1], join_df))
+		res.append([max_host, rid, pre_size, max_pre])
+		# map_size = map_line[0][2]
+		# host = map_line[0][0]
+		# reduce_size = map_size * prob + (map_sum - map_size) / (map_num - 1) * (1 - prob)
+		# res.append([host, rid, reduce_size])
+	# print res
 	return res
 
 
@@ -100,16 +112,18 @@ def parse_spark_log(file_dir):
 					s = long(datas[12])
 					res.append([application, s_id, m_id, exe_id, r_id, s])
 					sid = s_id
-				if 'frankfzw: reduceid' in line:
+				if 'reduce distribution' in line:
 					datas = line.split()
-					r_id = int(datas[6])
-					m_id = int(datas[8])
-					prob = float(datas[10])
-					entry = [application, sid, m_id, r_id, prob]
-					key = (application, sid, m_id, r_id)
-					if key not in dis_dic:
-						distribution.append(entry)
-						dis_dic[key] = 1
+					m_id = int(datas[6])
+					prob = map(lambda x: int(x), datas[9:])
+					total_prob = np.sum(prob)
+					for i in range(len(prob)):
+						p = float(prob[i])/float(total_prob)
+						entry = [application, sid, m_id, i, p]
+						key = (application, sid, m_id, i)
+						if key not in dis_dic:
+							distribution.append(entry)
+							dis_dic[key] = 1
 
 	df = pd.DataFrame(data=res, columns=['jobid', 'shuffleid', 'mapid', 'host', 'reduceid', 'size'])
 	df_dis = pd.DataFrame(data=distribution, columns=['jobid', 'shuffleid', 'mapid', 'reduceid', 'prob'])
@@ -140,13 +154,14 @@ def main():
 	# model = Train(len(map_ids), len(reduce_ids), 0.5)
 	# model.train(X[0:2], Y[0:2])
 	# print model.score(X[2:], Y[2:])
-	file_path = '/home/frankfzw/Spark/evaluation/spark/single shuffle'
+	file_path = '/mnt/d/Spark/evaluation/spark/single shuffle'
+	# file_path = '/home/frankfzw/Spark/evaluation/spark/single shuffle'
 	res = []
 	df, df_dis = parse_spark_log(file_path)
 	# print df_dis
 	applications = df.groupby(['jobid']).groups.keys()
 	for app_id in applications:
-		if app_id != '20170322111022':
+		if app_id != '20170324093817':
 			continue
 		app_data = df.loc[df['jobid'] == app_id]
 		shuffles = app_data.groupby(['shuffleid']).groups.keys()
@@ -185,10 +200,11 @@ def main():
 				df_map_arrays = map(lambda x: \
 					extend_array(list(set(shuffle_data.loc[shuffle_data['mapid'] == x[0]]['host'].values)), list(x)), tmp_map_arrays)
 				df_map = pd.DataFrame(data=df_map_arrays, columns=['host', 'mapid', 'size'])
-				print df_map
 				df_reduce = reduce_distribution[['mapid', 'reduceid', 'prob']]
+				# print df_map
+				# print df_reduce
 				result = predict_with_sample(df_map, df_reduce)
-				pre_df = pd.DataFrame(data=result, columns=['host', 'reduceid', 'size'])
+				pre_df = pd.DataFrame(data=result, columns=['host', 'reduceid', 'size', 'porb'])
 				pre_df.to_csv('{}/{}_{}_sample_pre_reduce.csv'.format(tmp_dir, app_id, s_id))
 			else:
 				train_set = filter(lambda x: x[0] < predict_turn * num_hosts, tmp)
@@ -198,8 +214,8 @@ def main():
 				predict_set_X = map(lambda x: list(x)[1:3], predict_set)
 				predict_set_Y = map(lambda x: list(x)[-1], predict_set)
 				model = Train(map_nums, len(reduces_size), 0.2)
-				print train_set_X
-				print train_set_Y
+				# print train_set_X
+				# print train_set_Y
 				model.train(train_set_X, train_set_Y)
 
 				# do predict
@@ -222,7 +238,7 @@ def main():
 				res += output
 
 		save_df = pd.DataFrame(data=reduce_array, columns=['jobid', 'shuffleid', 'reduceid', 'size'])
-		save_df.to_csv('{}/{}_reduce.csv'.format('/home/frankfzw/tmp', app_id))
+		save_df.to_csv('{}/{}_reduce.csv'.format(tmp_dir, app_id))
 	out_df = pd.DataFrame(data=res, columns=['appid', 'shuffleid', 'reduceid', 'size', 'predictsize'])
 	out_df.to_csv('{}/pre_reduce.csv'.format(tmp_dir))
 	# save_df = pd.DataFrame(data=res, columns=['appid', 'shuffleid', 'reduceid', 'reducesize', 'predictsize'])					
