@@ -4,11 +4,11 @@ import json
 from datetime import datetime
 import csv
 
-app_id = 'app-20170326112246-0000'
+app_id = 'app-20170327074031-0002'
 dir_name = '/mnt/d/tmp'
 file_path = '{}/{}.json'.format(dir_name, app_id)
 output_path = '{}/{}.csv'.format(dir_name, app_id)
-host = 'ip-172-31-41-225.us-west-2.compute.internal'
+host = 'ip-172-31-38-238.us-west-2.compute.internal'
 
 cpu = '{}/cpu.txt'.format(dir_name)
 net = '{}/net.txt'.format(dir_name)
@@ -53,6 +53,7 @@ for k, v in task_info.iteritems():
 
 # convert cpu disk and net to csv
 f = open(cpu, 'r')
+f.readline()
 res = []
 for l in f:
 	args = l.split()
@@ -67,13 +68,14 @@ for r in res:
 target = ['net', 'disk']
 for t in target:
 	f = open('{}/{}.txt'.format(dir_name, t), 'r')
+	f.readline()
 	res = []
 	for l in f:
 		args = l.split()
 		ts = datetime.fromtimestamp(long(args[0]) / 1000.0).strftime("%H:%M:%S:%f")
 		v1 = args[1]
 		v2 = args[2]
-		res.append([ts, v])
+		res.append([ts, v1, v2])
 	output = open('{}/{}.csv'.format(dir_name, t), 'w')
 	wr = csv.writer(output, quoting=csv.QUOTE_ALL)
 	for r in res:
