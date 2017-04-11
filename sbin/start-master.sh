@@ -13,4 +13,4 @@ sbin=`cd "$sbin"; pwd`
 
 JAR=${SCACHE_HOME}/target/scala-2.11/SCache-assembly-0.1-SNAPSHOT.jar
 
-nohup java -cp $JAR org.scache.deploy.Master >/dev/null 2>&1 &
+nohup java -cp $JAR org.scache.deploy.ScacheMaster >/dev/null 2>&1 &

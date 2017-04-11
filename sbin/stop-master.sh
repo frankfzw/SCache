@@ -1,5 +1,5 @@
 #!/bin/bash
 
-PID=`jps | grep Master | awk '{print $1}'`
+PID=`jps | grep ScacheMaster | awk '{print $1}'`
 
 kill $PID

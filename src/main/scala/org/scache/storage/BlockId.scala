@@ -104,7 +104,7 @@ object BlockId {
   val TASKRESULT = "taskresult_([0-9]+)".r
   val STREAM = "input-([0-9]+)-([0-9]+)".r
   val TEST = "test_(.*)".r
-  val SCACHEBLOCK = "(.*)_([0-9]+)_([0-9]+)_([0-9]+)_([0-9]+)".r
+  val SCACHEBLOCK = "scache_(.*)_([0-9]+)_([0-9]+)_([0-9]+)_([0-9]+)".r
 
   /** Converts a BlockId "name" String back into a BlockId. */
   def apply(id: String): BlockId = id match {

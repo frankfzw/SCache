@@ -21,7 +21,13 @@ import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
 
-private class Master(
+private[scache] class ScacheClientInfo(
+    val id: Int,
+    val host: String,
+    val port: Int,
+    val ref: RpcEndpointRef) extends Serializable
+
+private class ScacheMaster(
     val rpcEnv: RpcEnv,
     val hostname: String,
     conf: ScacheConf,
@@ -29,7 +35,7 @@ private class Master(
     isLocal: Boolean) extends ThreadSafeRpcEndpoint with Logging {
   val numUsableCores = conf.getInt("scache.cores", 1)
 
-  val clientIdToInfo: mutable.HashMap[Int, ClientInfo] = new mutable.HashMap[Int, ClientInfo]()
+  val clientIdToInfo: mutable.HashMap[Int, ScacheClientInfo] = new mutable.HashMap[Int, ScacheClientInfo]()
   val hostnameToClientId: mutable.HashMap[String, Int] = new mutable.HashMap[String, Int]()
 
 
@@ -126,8 +132,8 @@ private class Master(
       logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has been registered again")
       clientIdToInfo.remove(hostnameToClientId(hostname))
     }
-    val clientId = Master.CLIENT_ID_GENERATOR.next
-    val info = new ClientInfo(clientId, hostname, port, rpcEndpointRef)
+    val clientId = ScacheMaster.CLIENT_ID_GENERATOR.next
+    val info = new ScacheClientInfo(clientId, hostname, port, rpcEndpointRef)
     if (hostnameToClientId.contains(hostname)) {
       clientIdToInfo -= hostnameToClientId(hostname)
     }
@@ -207,7 +213,7 @@ private class Master(
 
 }
 
-object Master extends Logging {
+object ScacheMaster extends Logging {
   private val CLIENT_ID_GENERATOR = new IdGenerator
 
   def main(args: Array[String]): Unit = {
@@ -220,7 +226,7 @@ object Master extends Logging {
     logInfo("Start Master")
     val rpcEnv = RpcEnv.create(SYSTEM_NAME, arguments.host, arguments.port, conf)
     val masterEndpoint = rpcEnv.setupEndpoint("ScacheMaster",
-      new Master(rpcEnv, arguments.host, conf, true, arguments.isLocal))
+      new ScacheMaster(rpcEnv, arguments.host, conf, true, arguments.isLocal))
     rpcEnv.awaitTermination()
   //   logInfo(conf.getInt("scache.memory", 1).toString)
   //   logInfo(conf.getString("scache.master", "localhost").toString)
@@ -228,4 +234,3 @@ object Master extends Logging {
   }
 }
 
-private[scache] class ClientInfo(val id: Int, val host: String, val port: Int, val ref: RpcEndpointRef) extends Serializable

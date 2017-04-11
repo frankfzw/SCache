@@ -30,7 +30,7 @@ import scala.util.{Failure, Random, Success}
 /**
  * Created by frankfzw on 16-9-19.
  */
-class Client(
+class ScacheClient(
   val rpcEnv: RpcEnv,
   val hostname: String,
   val masterHostname: String,
@@ -66,7 +66,7 @@ class Client(
 
   override def onStart(): Unit = {
     logInfo("Client connecting to master " + masterHostname)
-    master = RpcUtils.makeDriverRef("Master", conf, rpcEnv)
+    master = RpcUtils.makeDriverRef("ScacheMaster", conf, rpcEnv)
     clientId = master.askWithRetry[Int](RegisterClient(hostname, port, self))
     blockManager = new BlockManager(clientId.toString, rpcEnv, blockManagerMaster,
       serializerManager, conf, memoryManager, mapOutputTracker, blockTransferService, numUsableCores)
@@ -274,7 +274,7 @@ class Client(
 
 }
 
-object Client extends Logging{
+object ScacheClient extends Logging{
   def main(args: Array[String]): Unit = {
     val conf = new ScacheConf()
     val arguements = new ClientArguments(args, conf)
@@ -289,7 +289,7 @@ object Client extends Logging{
 
     val rpcEnv = RpcEnv.create("scache.client", arguements.host, arguements.port, conf)
     val clientEndpoint = rpcEnv.setupEndpoint("ScaheClient",
-      new Client(rpcEnv, arguements.host, RpcEndpointAddress(masterRpcAddress, "ScacheMaster").toString, arguements.port, conf)
+      new ScacheClient(rpcEnv, arguements.host, RpcEndpointAddress(masterRpcAddress, "ScacheMaster").toString, arguements.port, conf)
     )
     rpcEnv.awaitTermination()
   }
