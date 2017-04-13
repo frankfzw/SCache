@@ -11,11 +11,10 @@ class ShuffleStatus(id: Int, numMap: Int, numReduce: Int) extends Serializable{
 }
 
 
-private[scache] class ReduceStatus(reduceId: Int, hostAddr: String, bak: Array[String], numMap: Int) extends Serializable{
-  val id = reduceId
-  val host = hostAddr
-  val backups = bak
-  // val size = new Array[Long](numMap)
-}
+private[scache] class ReduceStatus(
+  val id: Int,
+  val host: String,
+  val backups: Array[String],
+  val numMap: Int) extends Serializable
 
 

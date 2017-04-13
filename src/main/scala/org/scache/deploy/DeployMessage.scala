@@ -22,7 +22,7 @@ private[deploy] object DeployMessages {
   sealed trait FromDaemon
   case class PutBlock(scacheBlockId: BlockId, size: Int) extends FromDaemon
   case class GetBlock(scacheBlockId: BlockId) extends FromDaemon
-  case class RegisterShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) extends FromDaemon
+  case class RegisterShuffle(appName: String, jobId: Int, ids: Array[Int], numMaps: Array[Int], numReduces: Array[Int]) extends FromDaemon
   case class MapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends FromDaemon
   case class GetShuffleStatus(appName: String, jobId: Int, shuffleId: Int) extends FromDaemon
 

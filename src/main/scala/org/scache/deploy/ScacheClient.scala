@@ -109,10 +109,23 @@ class ScacheClient(
       logError("Empty message received !")
   }
 
-  def registerShuffle(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int): Boolean = {
-    val res = mapOutputTracker.registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask)
-    logInfo(s"Trying to register shuffle $appName, $jobId, $shuffleId with map $numMapTask and reduce $numReduceTask, get $res")
-    res
+  def registerShuffle(appName: String, jobId: Int, ids: Array[Int], numMaps: Array[Int], numReduces: Array[Int]): Boolean = {
+    if (ids.length == 1) {
+      val res = mapOutputTracker.registerShuffle(appName, jobId, ids(0), numMaps(0), numReduces(0))
+      logInfo(s"Trying to register shuffle $appName, $jobId, ${ids(0)} with map ${numMaps(0)} and reduce ${numReduces(0)}, get $res")
+      return res
+    } else {
+      val r = numReduces(0)
+      for (numR <- numReduces) {
+        if (numR != r) {
+          logError(s"Register shuffle $appName, $jobId, ${ids(0)} with map ${numMaps(0)} and " +
+            s"reduce ${numReduces(0)} fail, Reduce inconsistency")
+          return false
+        }
+      }
+      val res = mapOutputTracker.registerShuffles(appName, jobId, ids, numMaps, r)
+      res
+    }
   }
 
   def mapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
@@ -263,7 +276,7 @@ class ScacheClient(
 
     // shuffle register test
     Thread.sleep(Random.nextInt(1000))
-    val res = registerShuffle("scache", 0, 1, 5, 2)
+    val res = registerShuffle("scache", 0, Array(1), Array(5), Array(2))
     logInfo(s"TEST: register shuffle got ${res}")
     Thread.sleep(Random.nextInt(1000))
     val statuses = getShuffleStatus(ScacheBlockId("scache", 0, 1, 0, 0))

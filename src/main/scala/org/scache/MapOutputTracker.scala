@@ -24,7 +24,7 @@ import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 import org.scache.deploy.{ReduceStatus, ShuffleStatus}
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Map}
+import scala.collection.mutable.{ArrayBuffer, HashMap, Map}
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 import org.scache.util.Logging
@@ -33,12 +33,14 @@ import org.scache.scheduler.{CacheId, CacheStatistics, MapStatus}
 import org.scache.storage.{BlockId, BlockManagerId, ScacheBlockId, ShuffleBlockId}
 import org.scache.util._
 
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext
 import scala.util.Random
 
 private[scache] sealed trait MapOutputTrackerMessage
 private[scache] case object StopMapOutputTracker extends MapOutputTrackerMessage
 private[scache] case class RegisterShuffleMaster(appName:String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int)
+private[scache] case class RegisterShufflesMaster(appName:String, jobId: Int, ids: Array[Int], numMaps: Array[Int], numReduces: Int)
   extends MapOutputTrackerMessage
 private[scache] case class RequestShuffleStatus(shuffleKey: ShuffleKey)
   extends MapOutputTrackerMessage
@@ -62,8 +64,10 @@ private[scache] class MapOutputTrackerMasterEndpoint(
       }
     // case UpdateMapBlockSize(blockId, size) =>
     //   context.reply(tracker.updateMapBlockSize(blockId, size))
-    case RegisterShuffleMaster(appName:String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) =>
+    case RegisterShuffleMaster(appName: String, jobId: Int, shuffleId: Int, numMapTask: Int, numReduceTask: Int) =>
       context.reply(tracker.registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
+    case RegisterShufflesMaster(appName: String, jobId: Int, ids: Array[Int], numMaps: Array[Int], numReduces: Int) =>
+      context.reply(tracker.registerShuffles(appName, jobId, ids, numMaps, numReduces))
     case StopMapOutputTracker =>
       logInfo("MapOutputTrackerMasterEndpoint stopped!")
       context.reply(true)
@@ -140,6 +144,11 @@ private[scache] abstract class MapOutputTracker(conf: ScacheConf) extends Loggin
     res
   }
 
+  def registerShuffles(appName: String, jobId: Int, ids: Array[Int], numMaps: Array[Int], numReduces: Int): Boolean = {
+    val res = askTracker[Boolean](RegisterShufflesMaster(appName, jobId, ids, numMaps, numReduces))
+    res
+  }
+
   // def updateMapBlockSize(blockId: BlockId, size: Long): Boolean = {
   //   blockId match {
   //     case ScacheBlockId(appName, jobId, shuffleId, mapId, reduceId) =>
@@ -170,6 +179,8 @@ private[scache] class MapOutputTrackerMaster(conf: ScacheConf, isLocal: Boolean)
 
   var hostnameToClientId: scala.collection.mutable.HashMap[String, Int] = _
   private val shuffleMapBlocksStatus = new ConcurrentHashMap[ShuffleKey, Array[Int]]().asScala
+  private val shuffleSetMap = new ConcurrentHashMap[ShuffleKey, Int]().asScala
+  private val shuffleSetArr = new ArrayBuffer[mutable.HashSet[ShuffleKey]]()
 
 
 
@@ -203,6 +214,43 @@ private[scache] class MapOutputTrackerMaster(conf: ScacheConf, isLocal: Boolean)
     logInfo(s"Register shuffle $appName:$jobId:$shuffleId with map:$numMapTask and reduce:$numReduceTask")
 
     true
+  }
+
+  override def registerShuffles(appName: String, jobId: Int, ids: Array[Int], numMaps: Array[Int], numReduces: Int): Boolean = {
+    val sId  = (for (s <- ids if (shuffleSetMap.contains(ShuffleKey(appName, jobId, s)))) yield s)
+    if (sId.length != 0) {
+      val setId = shuffleSetMap(ShuffleKey(appName, jobId, sId(0)))
+      shuffleSetArr.synchronized {
+        for (i <- 0 to ids.length if !sId.contains(ids(i))) {
+          val key = ShuffleKey(appName, jobId, ids(i))
+          shuffleSetArr(setId) += key
+          val status = new ShuffleStatus(ids(i), numMaps(i), numReduces)
+          shuffleOutputStatus.putIfAbsent(key, status)
+          val mapBlocksStatus = new Array[Int](numMaps(i)).map(x => numReduces)
+          shuffleMapBlocksStatus.putIfAbsent(key, mapBlocksStatus)
+          shuffleSetMap.putIfAbsent(key, setId)
+          logInfo(s"Register shuffle ${key} with map:${numMaps(i)} and reduce:$numReduces")
+        }
+      }
+      true
+    } else {
+      val set = new mutable.HashSet[ShuffleKey]()
+      val index = shuffleSetArr.synchronized {
+        shuffleSetArr += set
+        shuffleSetArr.length - 1
+      }
+      for (i <- 0 to sId.length) {
+        val key = ShuffleKey(appName, jobId, ids(i))
+        shuffleSetArr(index) += key
+        val status = new ShuffleStatus(ids(i), numMaps(i), numReduces)
+        shuffleOutputStatus.putIfAbsent(key, status)
+        val mapBlocksStatus = new Array[Int](numMaps(i)).map(x => numReduces)
+        shuffleMapBlocksStatus.putIfAbsent(key, mapBlocksStatus)
+        shuffleSetMap.putIfAbsent(key, index)
+        logInfo(s"Register shuffle ${key} with map:${numMaps(i)} and reduce:$numReduces")
+      }
+      true
+    }
   }
 
   override def getShuffleStatuses(shuffleKey: ShuffleKey): ShuffleStatus = {

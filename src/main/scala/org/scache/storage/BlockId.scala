@@ -77,7 +77,7 @@ case class StreamBlockId(streamId: Int, uniqueId: Long) extends BlockId {
 }
 
 case class ScacheBlockId(app: String, jobId: Int, shuffleId: Int, mapId: Int, reduceId: Int) extends BlockId {
-  override def name: String = app + "_" + jobId + "_" + shuffleId + "_" + mapId + "_" + reduceId
+  override def name: String = "scache_" + app + "_" + jobId + "_" + shuffleId + "_" + mapId + "_" + reduceId
 }
 
 /** Id associated with temporary local data managed as blocks. Not serializable. */
