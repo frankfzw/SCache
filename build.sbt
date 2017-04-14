@@ -23,7 +23,7 @@ libraryDependencies ++= Seq(
   "com.twitter" % "chill-java" % "0.5.0",
   "org.roaringbitmap" % "RoaringBitmap" % "0.5.11",
   "org.apache.hadoop" % "hadoop-common" % "2.4.0",
-  "org.apache.hadoop" % "hadoop-mapred" % "0.22.0"
+  "org.apache.hadoop" % "hadoop-mapreduce-client-core" % "2.4.0"
 )
 
 

@@ -24,6 +24,7 @@ class Daemon(
   scacheHome: String,
   platform: String) extends Logging {
 
+  System.setProperty("SCACHE_DAEMON", s"daemon-${Utils.findLocalInetAddress().getHostName}")
   private val asyncThreadPool =
     ThreadUtils.newDaemonCachedThreadPool("scache-daemon-async-thread-pool")
   private implicit val asyncExecutionContext = ExecutionContext.fromExecutorService(asyncThreadPool)
@@ -32,16 +33,20 @@ class Daemon(
   private val clientPort = conf.getInt("scache.client.port", 5678)
   private val daemonPort = conf.getInt("scache.daemon.port", 12345)
   private val host = Utils.findLocalInetAddress().getHostAddress
-  private val rpcEnv = RpcEnv.create("scache.daemon", host, daemonPort, conf)
+  private val rpcEnv = RpcEnv.create("scache.daemon", host, daemonPort, conf, true)
   private val clientRef = rpcEnv.setupEndpointRef(RpcAddress(host, clientPort), "ScacheClient")
 
   // start daemon rpc thread
   doAsync[Unit]("Start Scache Daemon") {
+    logInfo("Start deamon")
     rpcEnv.awaitTermination()
   }
 
   def putBlock(blockId: String, data: Array[Byte], rawLen: Int, compressedLen: Int): Unit = {
     val scacheBlockId = BlockId.apply(blockId)
+    if (!scacheBlockId.isInstanceOf[ScacheBlockId]) {
+      logError(s"Unexpected block type, except ScacheBlockId, got ${scacheBlockId.getClass.getSimpleName}")
+    }
     logDebug(s"Start copying block $blockId with size $rawLen")
     doAsync[Unit](s"Copy block $blockId") {
       val f = new File(s"${ScacheConf.scacheLocalDir}/$blockId")
@@ -57,16 +62,23 @@ class Daemon(
       }
     }
   }
-  def getBlock(blockId: String): Array[Byte] = {
+  def getBlock(blockId: String): Option[Array[Byte]] = {
     val scacheBlockId = BlockId.apply(blockId)
+    if (!scacheBlockId.isInstanceOf[ScacheBlockId]) {
+      logError(s"Unexpected block type, except ScacheBlockId, got ${scacheBlockId.getClass.getSimpleName}")
+      return None
+    }
     val size = clientRef.askWithRetry[Int](GetBlock(scacheBlockId))
+    if (size < 0) {
+      return None
+    }
     val f = new File(s"${ScacheConf.scacheLocalDir}/$blockId")
     val channel = FileChannel.open(f.toPath, StandardOpenOption.READ,
       StandardOpenOption.WRITE, StandardOpenOption.CREATE)
     val buf = channel.map(FileChannel.MapMode.READ_WRITE, 0, size)
     val arrayBuf = new Array[Byte](size)
     buf.get(arrayBuf)
-    arrayBuf
+    Some(arrayBuf)
   }
   def registerShuffles(jobId: Int, shuffleIds: Array[Int], maps: Array[Int], reduces: Array[Int]): Unit = {
     doAsync[Unit] ("Register Shuffles") {
@@ -108,6 +120,14 @@ class Daemon(
     future.onFailure { case t: Throwable =>
       logError("Error in " + actionMessage, t)
     }
+  }
+}
+
+object Daemon {
+  def main(args: Array[String]): Unit = {
+    val daemon = new Daemon("/home/spark/SCache", "test")
+    daemon.putBlock(ScacheBlockId("test", 0, 0, 0, 0).toString, Array[Byte](5), 5, 5)
+    Thread.sleep(10000)
   }
 }
 

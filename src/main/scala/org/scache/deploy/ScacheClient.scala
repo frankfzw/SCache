@@ -301,7 +301,7 @@ object ScacheClient extends Logging{
     val masterRpcAddress = RpcAddress(arguements.masterIp, arguements.masterPort)
 
     val rpcEnv = RpcEnv.create("scache.client", arguements.host, arguements.port, conf)
-    val clientEndpoint = rpcEnv.setupEndpoint("ScaheClient",
+    val clientEndpoint = rpcEnv.setupEndpoint("ScacheClient",
       new ScacheClient(rpcEnv, arguements.host, RpcEndpointAddress(masterRpcAddress, "ScacheMaster").toString, arguements.port, conf)
     )
     rpcEnv.awaitTermination()
