@@ -137,6 +137,9 @@ private class ScacheMaster(
     if (hostnameToClientId.contains(hostname)) {
       clientIdToInfo -= hostnameToClientId(hostname)
     }
+    if (conf.getBoolean("scache.driver.mode", true) && hostname.equals(this.hostname)) {
+      return clientId
+    }
     hostnameToClientId.update(hostname, clientId)
     clientIdToInfo.update(clientId, info)
     logInfo(s"Register client ${hostname} with id ${clientId} and rpc ref ${rpcEndpointRef}")
