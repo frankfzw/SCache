@@ -128,6 +128,9 @@ private class ScacheMaster(
   //   true
   // }
   def registerClient(hostname: String, port: Int, rpcEndpointRef: RpcEndpointRef): Int = {
+    if (conf.getBoolean("scache.driver.mode", true) && hostname.equals(this.hostname)) {
+      return 0
+    }
     if (hostnameToClientId.contains(hostname)) {
       logWarning(s"The client ${hostname}:${hostnameToClientId(hostname)} has been registered again")
       clientIdToInfo.remove(hostnameToClientId(hostname))
@@ -136,9 +139,6 @@ private class ScacheMaster(
     val info = new ScacheClientInfo(clientId, hostname, port, rpcEndpointRef)
     if (hostnameToClientId.contains(hostname)) {
       clientIdToInfo -= hostnameToClientId(hostname)
-    }
-    if (conf.getBoolean("scache.driver.mode", true) && hostname.equals(this.hostname)) {
-      return clientId
     }
     hostnameToClientId.update(hostname, clientId)
     clientIdToInfo.update(clientId, info)
