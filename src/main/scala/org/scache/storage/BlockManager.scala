@@ -333,7 +333,6 @@ private[scache] class BlockManager(
     if (bmId.executorId.equals(executorId)) {
       return
     }
-    logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${bmId.host}")
     val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
     val shuffleStatus = mapOutputTracker.getShuffleStatuses(shuffleKey)
     val bIds = new ArrayBuffer[String]()
@@ -343,6 +342,12 @@ private[scache] class BlockManager(
         bIds.append(bId.toString)
       }
     }
+    if (bIds.length == 0) {
+      logWarning("Got 0 blocks")
+      return
+    }
+    logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${bmId.host}, " +
+      s"${bIds.length} blocks totally")
     asyncGetRemoteBlock(bmId, bIds.toArray)
   }
 
