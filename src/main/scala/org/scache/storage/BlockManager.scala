@@ -58,7 +58,7 @@ private[scache] class BlockResult(
     val readMethod: DataReadMethod.Value,
     val bytes: Long)
 
-private[storage] class BlockFetchLock(var waiting: Int, val lock: Object)
+//private[storage] class BlockFetchLock(var waiting: Int, val lock: Object)
 
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
@@ -154,7 +154,7 @@ private[scache] class BlockManager(
   private val peerFetchLock = new Object
   private var lastPeerFetchTime = 0L
 
-  private val blocksOnTheAir = new ConcurrentHashMap[BlockId, BlockFetchLock]();
+  // private val blocksOnTheAir = new ConcurrentHashMap[BlockId, BlockFetchLock]();
   /**
    * Initializes the BlockManager with the given appId. This is not performed in the constructor as
    * the appId may not be known at BlockManager instantiation time (in particular for the driver,
@@ -618,13 +618,13 @@ private[scache] class BlockManager(
       new BlockFetchingListener {
         override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
           logError(s"Fail to fetch block: $blockId from ${bmId.host}")
-          if (blocksOnTheAir.contains(blockId)) {
-            val fetchLock = blocksOnTheAir.remove(blockId)
-            fetchLock.lock.synchronized {
-              fetchLock.waiting = 0
-              fetchLock.lock.notifyAll()
-            }
-          }
+//          if (blocksOnTheAir.contains(blockId)) {
+//            val fetchLock = blocksOnTheAir.remove(blockId)
+//            fetchLock.lock.synchronized {
+//              fetchLock.waiting = 0
+//              fetchLock.lock.notifyAll()
+//            }
+//          }
           throw exception
         }
 
@@ -634,44 +634,45 @@ private[scache] class BlockManager(
           val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
           putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
           logDebug(s"Got remote block ${blockId} from ${bmId.host} with size ${bytes.length}")
-          if (blocksOnTheAir.contains(blockId)) {
-            val fetchLock = blocksOnTheAir.remove(blockId)
-            fetchLock.lock.synchronized {
-              fetchLock.waiting = 0
-              fetchLock.lock.notifyAll()
-            }
-          }
+//          if (blocksOnTheAir.contains(blockId)) {
+//            logDebug(s"Have some requests waiting for ${blockId}, notify them")
+//            val fetchLock = blocksOnTheAir.remove(blockId)
+//            fetchLock.lock.synchronized {
+//              fetchLock.waiting = 0
+//              fetchLock.lock.notifyAll()
+//            }
+//          }
         }
       })
   }
 
-  def addBlockOnTheAir(blockId: BlockId): Boolean = {
-    if (blocksOnTheAir.containsKey(blockId)) {
-      return false
-    }
-    val fetchLock = new BlockFetchLock(1, new Object)
-    blocksOnTheAir.putIfAbsent(blockId, fetchLock)
-    return true
-  }
+//  def addBlockOnTheAir(blockId: BlockId): Boolean = {
+//    if (blocksOnTheAir.containsKey(blockId)) {
+//      return false
+//    }
+//    val fetchLock = new BlockFetchLock(1, new Object)
+//    blocksOnTheAir.putIfAbsent(blockId, fetchLock)
+//    return true
+//  }
 
-  def removeBlockOnTheAir(blockId: BlockId): Unit = {
-    val fetchLock = blocksOnTheAir.remove(blockId)
-    fetchLock.lock.synchronized {
-      fetchLock.waiting = 0
-      fetchLock.lock.notifyAll()
-    }
-  }
+//  def removeBlockOnTheAir(blockId: BlockId): Unit = {
+//    val fetchLock = blocksOnTheAir.remove(blockId)
+//    fetchLock.lock.synchronized {
+//      fetchLock.waiting = 0
+//      fetchLock.lock.notifyAll()
+//    }
+//  }
 
-  def waitForBlock(blockId: BlockId): Future[Unit] = {
-    Future {
-      val fetchLock = blocksOnTheAir.get(blockId)
-      fetchLock.lock.synchronized {
-        while (fetchLock.waiting > 0) {
-          fetchLock.lock.wait()
-        }
-      }
-    } (futureExecutionContext)
-  }
+//  def waitForBlock(blockId: BlockId): Future[Unit] = {
+//    Future {
+//      val fetchLock = blocksOnTheAir.get(blockId)
+//      fetchLock.lock.synchronized {
+//        while (fetchLock.waiting > 0) {
+//          fetchLock.lock.wait()
+//        }
+//      }
+//    } (futureExecutionContext)
+//  }
 
   /**
    * Get a block from the block manager (either local or remote).

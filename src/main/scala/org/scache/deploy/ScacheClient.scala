@@ -78,12 +78,13 @@ class ScacheClient(
   // meta of shuffle tracking
   // val shuffleOutputStatus = new mutable.HashMap[ShuffleKey, ShuffleStatus]()
   // create the future context for client
-  private val futureExecutionContext = ExecutionContext.fromExecutorService(
-    ThreadUtils.newDaemonCachedThreadPool("client-future", 128))
-  // runTest()
+  private val asyncThreadPool =
+    ThreadUtils.newDaemonCachedThreadPool("block-manager-slave-async-thread-pool")
+  private implicit val asyncExecutionContext = ExecutionContext.fromExecutorService(asyncThreadPool)
+
 
   override def onStop(): Unit = {
-    futureExecutionContext.shutdown()
+    asyncThreadPool.shutdown()
   }
 
 
@@ -98,13 +99,17 @@ class ScacheClient(
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case PutBlock(blockId, size) =>
-      readBlockFromDaemon(context, blockId, size)
+      doAsync[Boolean](s"Read block $blockId from daemon", context) {
+        readBlockFromDaemon(context, blockId, size)
+      }
     case RegisterShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask) =>
       context.reply(registerShuffle(appName, jobId, shuffleId, numMapTask, numReduceTask))
     case GetShuffleStatus(appName, jobId, shuffleId) =>
       context.reply(getShuffleStatus(appName, jobId, shuffleId))
     case GetBlock(blockId) =>
-      sendBlockToDaemon(context, blockId)
+      doAsync[Int](s"Fetch block ${blockId} from daemon", context) {
+        sendBlockToDaemon(context, blockId)
+      }
     case _ =>
       logError("Empty message received !")
   }
@@ -152,16 +157,15 @@ class ScacheClient(
   //   blockManager.asyncGetRemoteBlock(blockManagerId, bIds.toArray)
   // }
 
-  def readBlockFromDaemon(context: RpcCallContext, blockId: BlockId, size: Int): Unit = {
+  def readBlockFromDaemon(context: RpcCallContext, blockId: BlockId, size: Int): Boolean= {
     if (size == 0) {
       val data = new Array[Byte](0)
       val buf = ByteBuffer.wrap(data)
       val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
       blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.MEMORY_ONLY)
-      return
+      return true
     }
-    Future {
-      try {
+    try {
         val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
         val channel = FileChannel.open(f.toPath,
           StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.DELETE_ON_CLOSE)
@@ -175,7 +179,7 @@ class ScacheClient(
         blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.MEMORY_ONLY)
         logDebug(s"Put block $blockId with size $size successfully")
         channel.close()
-        context.reply(true)
+        true
 
         // start block transmission immediately
         // val shuffleStatus = getShuffleStatus(blockId)
@@ -184,17 +188,18 @@ class ScacheClient(
       } catch {
         case e: Exception =>
           logError(s"Copy block $blockId error, ${e.getMessage}")
-          context.reply(false)
+          false
       }
-
-    }(futureExecutionContext)
-
   }
 
-  def sendBlockToDaemon(context: RpcCallContext, blockId: BlockId): Unit = {
-    blockManager.getLocalBytes(blockId) match {
-      case Some(buffer) =>
-        Future {
+  def sendBlockToDaemon(context: RpcCallContext, blockId: BlockId): Int= {
+    val sleepMS = 500
+    val retryTimes = conf.getInt("scache.block.fetching.retry", 5)
+    var times = 0
+    while (times < retryTimes) {
+      logDebug(s"Try to fetch block at ${times} time")
+      blockManager.getLocalBytes(blockId) match {
+        case Some(buffer) =>
           val chunks = buffer.getChunks()
           // it should be a single chunked byte buffer
           assert(chunks.size == 1)
@@ -204,43 +209,14 @@ class ScacheClient(
           val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
           val writeBuf = channel.map(MapMode.READ_WRITE, 0, bytes.length)
           writeBuf.put(bytes, 0, bytes.length)
-          context.reply(bytes.length)
-        }(futureExecutionContext)
-      case None =>
-        // is the block on the air?
-        Future {
-          if (!blockManager.addBlockOnTheAir(blockId)) {
-            logWarning(s"Block ${blockId.toString} is fetching")
-          }
-          try {
-            val timeout = conf.getTimeAsSeconds("scache.block.fetching.timeout", "10s")
-            logDebug(s"Block ${blockId.toString} is still on the air, let wait for ${timeout} seconds")
-            Await.result(blockManager.waitForBlock(blockId), Duration(timeout, TimeUnit.SECONDS))
-            // try again
-            blockManager.getLocalBytes(blockId) match {
-              case Some(buffer) =>
-                val chunks = buffer.getChunks()
-                // it should be a single chunked byte buffer
-                assert(chunks.size == 1)
-                val bytes = new Array[Byte](chunks(0).remaining())
-                chunks(0).get(bytes)
-                val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
-                val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
-                val writeBuf = channel.map(MapMode.READ_WRITE, 0, bytes.length)
-                writeBuf.put(bytes, 0, bytes.length)
-                context.reply(bytes.length)
-              case None =>
-                logError(s"Block ${blockId.toString} not found")
-                context.reply(-1)
-            }
-          } catch {
-            case te: java.util.concurrent.TimeoutException =>
-              blockManager.removeBlockOnTheAir(blockId)
-              logError(s"Block ${blockId.toString} fetching timeout")
-              context.reply(-1)
-          }
-        }(futureExecutionContext)
+          return bytes.length
+        case _ =>
+          Thread.sleep((retryTimes - times) * sleepMS)
+          times += 1
+      }
     }
+    return -1
+
   }
 
   private def getShuffleStatus(blockId: BlockId): ShuffleStatus = {
@@ -285,6 +261,21 @@ class ScacheClient(
     }
   }
 
+  private def doAsync[T](actionMessage: String, context: RpcCallContext)(body: => T) {
+    val future = Future {
+      logDebug(actionMessage)
+      body
+    }
+    future.onSuccess { case response =>
+      logDebug("Done " + actionMessage + ", response is " + response)
+      context.reply(response)
+      logDebug("Sent response: " + response + " to " + context.senderAddress)
+    }
+    future.onFailure { case t: Throwable =>
+      logError("Error in " + actionMessage, t)
+      context.sendFailure(t)
+    }
+  }
 }
 
 object ScacheClient extends Logging{
