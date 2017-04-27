@@ -162,7 +162,7 @@ class ScacheClient(
       val data = new Array[Byte](0)
       val buf = ByteBuffer.wrap(data)
       val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
-      blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.MEMORY_ONLY)
+      blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.OFF_HEAP)
       return true
     }
     try {
