@@ -614,6 +614,10 @@ private[scache] class BlockManager(
   }
 
   def asyncGetRemoteBlock(bmId: BlockManagerId, blockIds: Array[String]): Unit = {
+    if (blockIds.length == 0) {
+      logWarning(s"Got an empty block fetch request")
+      return
+    }
     if (bmId.executorId.equals(executorId)) {
       logWarning(s"Got a local block fetch in remote fetch handler")
       return
