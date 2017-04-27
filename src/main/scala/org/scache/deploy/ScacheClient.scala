@@ -193,7 +193,7 @@ class ScacheClient(
   }
 
   def sendBlockToDaemon(context: RpcCallContext, blockId: BlockId): Int= {
-    val sleepMS = 500
+    val sleepMS = 100
     val retryTimes = conf.getInt("scache.block.fetching.retry", 5)
     var times = 0
     while (times < retryTimes) {
@@ -211,7 +211,7 @@ class ScacheClient(
           writeBuf.put(bytes, 0, bytes.length)
           return bytes.length
         case _ =>
-          Thread.sleep((retryTimes - times) * sleepMS)
+          Thread.sleep(sleepMS)
           times += 1
       }
     }
