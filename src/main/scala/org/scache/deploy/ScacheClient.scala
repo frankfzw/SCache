@@ -197,7 +197,7 @@ class ScacheClient(
     val retryTimes = conf.getInt("scache.block.fetching.retry", 5)
     var times = 0
     while (times < retryTimes) {
-      logDebug(s"Try to fetch block at ${times} time")
+      logDebug(s"Try to fetch block ${blockId} at ${times} time")
       blockManager.getLocalBytes(blockId) match {
         case Some(buffer) =>
           val chunks = buffer.getChunks()
