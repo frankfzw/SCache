@@ -11,17 +11,13 @@ private[deploy] trait Arguments extends Logging {
 }
 
 private[deploy] class MasterArguments(args: Array[String], conf: ScacheConf) extends Arguments {
-  var host = sys.env.get("SCACHE_LOCAL_HOSTNAME").getOrElse(Utils.findLocalInetAddress().getHostAddress)
+  var host = Utils.findLocalInetAddress().getHostAddress
   var port = 6388
   var isLocal = true
 
   // Check for settings in environment variables
-  if (System.getenv("SCACHE_MASTER_IP") != null) {
-    host = System.getenv("SCACHE_MASTER_IP")
-  }
-  if (System.getenv("SCACHE_MASTER_PORT") != null) {
-    port = System.getenv("SCACHE_MASTER_PORT").toInt
-  }
+  host = conf.getString("scache.master.ip", host)
+  port = conf.getInt("scache.master.port", port)
 
   parse(args.toList)
 
@@ -49,30 +45,22 @@ private[deploy] class MasterArguments(args: Array[String], conf: ScacheConf) ext
         "Options:\n" +
         "  -i HOST, --ip HOST     Hostname to listen on \n" +
         "  -p PORT, --port PORT   Port to listen on (default: 6388)\n" +
-        "                         Default is conf/spark-defaults.conf.")
+        "                         Default is conf/scache.conf.")
       // scalastyle:on println
       System.exit(1)
   }
 }
 
 private[deploy] class ClientArguments(args: Array[String], conf: ScacheConf) extends Arguments {
-  var host = sys.env.get("SCACHE_LOCAL_HOSTNAME").getOrElse(Utils.findLocalInetAddress().getHostAddress)
+  var host = Utils.findLocalInetAddress().getHostAddress
   var masterIp = host
   var isLocal = true
   var port = 5678
   var masterPort = 6388
 
-  // Check for settings in environment variables
-  if (System.getenv("SCACHE_CLIENT_IP") != null) {
-    host = System.getenv("SCACHE_CLIENT_IP")
-  }
-  // Check for settings in environment variables
-  if (System.getenv("SCACHE_MASTER_IP") != null) {
-    masterIp = System.getenv("SCACHE_MASTER_IP")
-  }
-  if (System.getenv("SCACHE_CLIENT_PORT") != null) {
-    port = System.getenv("SCACHE_CLIENT_PORT").toInt
-  }
+  masterIp = conf.getString("scache.master.ip", masterIp)
+  port = conf.getInt("scache.clent.port", port)
+  masterPort = conf.getInt("scache.master.port", masterPort)
 
 
   parse(args.toList)

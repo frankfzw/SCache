@@ -506,7 +506,7 @@ private[storage] class MemoryStore(
         if (newEffectiveStorageLevel.isValid) {
           // The block is still present in at least one store, so release the lock
           // but don't delete the block info
-          blockInfoManager.unlock(blockId)
+          blockInfoManager.unlockWrite(blockId)
         } else {
           // The block isn't present in any store, so delete the block info so that the
           // block can be stored again
@@ -534,7 +534,7 @@ private[storage] class MemoryStore(
           logInfo(s"Will not store $id")
         }
         selectedBlocks.foreach { id =>
-          blockInfoManager.unlock(id)
+          blockInfoManager.unlockWrite(id)
         }
         0L
       }

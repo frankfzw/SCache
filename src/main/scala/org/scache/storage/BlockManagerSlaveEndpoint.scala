@@ -54,6 +54,10 @@ class BlockManagerSlaveEndpoint(
     case GetMatchingBlockIds(filter, _) =>
       context.reply(blockManager.getMatchingBlockIds(filter))
 
+    case StartMapFetch(bmId, appName, jobId, shuffleId, mapId) =>
+      blockManager.startMapFetch(bmId, appName, jobId, shuffleId, mapId)
+      context.reply(true)
+
 
   }
 

@@ -19,10 +19,11 @@ package org.scache.storage
 
 import java.io._
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
 
-
+import com.google.common.io.ByteStreams
 import org.scache.memory.MemoryMode
-import org.scache.storage.memory.{PartiallyUnrolledIterator, BlockEvictionHandler, MemoryStore, MemoryManager}
+import org.scache.storage.memory.{BlockEvictionHandler, MemoryManager, MemoryStore, PartiallyUnrolledIterator}
 import org.scache.unsafe.Platform
 
 import scala.collection.mutable.{ArrayBuffer, HashMap}
@@ -31,7 +32,6 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
-
 import org.scache._
 import org.scache.util.Logging
 import org.scache.network._
@@ -41,6 +41,9 @@ import org.scache.rpc.RpcEnv
 import org.scache.serializer.{SerializerInstance, SerializerManager}
 import org.scache.util._
 import org.scache.io.ChunkedByteBuffer
+import org.scache.network.transfer.BlockFetchingListener
+
+import scala.collection.mutable
 
 
 object DataReadMethod extends Enumeration with Serializable {
@@ -54,6 +57,8 @@ private[scache] class BlockResult(
     val data: Iterator[Any],
     val readMethod: DataReadMethod.Value,
     val bytes: Long)
+
+//private[storage] class BlockFetchLock(var waiting: Int, val lock: Object)
 
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
@@ -149,6 +154,7 @@ private[scache] class BlockManager(
   private val peerFetchLock = new Object
   private var lastPeerFetchTime = 0L
 
+  // private val blocksOnTheAir = new ConcurrentHashMap[BlockId, BlockFetchLock]();
   /**
    * Initializes the BlockManager with the given appId. This is not performed in the constructor as
    * the appId may not be known at BlockManager instantiation time (in particular for the driver,
@@ -322,9 +328,27 @@ private[scache] class BlockManager(
   }
 
 
-  //TODO: fill this
-  private def getShuffleBlock(blockId: ScacheBlockId): ManagedBuffer = {
-    null
+  def startMapFetch(bmId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+    // only pre-fetch remote bytes
+    if (bmId.executorId.equals(executorId)) {
+      return
+    }
+    val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
+    val shuffleStatus = mapOutputTracker.getShuffleStatuses(shuffleKey)
+    val bIds = new ArrayBuffer[String]()
+    for (r <- shuffleStatus.reduceArray) {
+      if (r.host.equals(blockManagerId.host)) {
+        val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
+        bIds.append(bId.toString)
+      }
+    }
+    if (bIds.length == 0) {
+      logWarning("Got 0 blocks")
+      return
+    }
+    logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${bmId.host}, " +
+      s"${bIds.length} blocks totally")
+    asyncGetRemoteBlock(bmId, bIds.toArray)
   }
 
   /**
@@ -589,6 +613,76 @@ private[scache] class BlockManager(
     None
   }
 
+  def asyncGetRemoteBlock(bmId: BlockManagerId, blockIds: Array[String]): Unit = {
+    if (blockIds.length == 0) {
+      logWarning(s"Got an empty block fetch request")
+      return
+    }
+    if (bmId.executorId.equals(executorId)) {
+      logWarning(s"Got a local block fetch in remote fetch handler")
+      return
+    }
+    logDebug(s"Start to fetch remote block from ${bmId.host}")
+    shuffleClient.fetchBlocks(bmId.host, bmId.port, bmId.executorId, blockIds,
+      new BlockFetchingListener {
+        override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
+          logError(s"Fail to fetch block: $blockId from ${bmId.host}")
+//          if (blocksOnTheAir.contains(blockId)) {
+//            val fetchLock = blocksOnTheAir.remove(blockId)
+//            fetchLock.lock.synchronized {
+//              fetchLock.waiting = 0
+//              fetchLock.lock.notifyAll()
+//            }
+//          }
+          throw exception
+        }
+
+        override def onBlockFetchSuccess(blockId: String, data: ManagedBuffer): Unit = {
+          val bytes = ByteStreams.toByteArray(data.createInputStream())
+          val buf = ByteBuffer.wrap(bytes)
+          val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
+          putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
+          logDebug(s"Got remote block ${blockId} from ${bmId.host} with size ${bytes.length}")
+//          if (blocksOnTheAir.contains(blockId)) {
+//            logDebug(s"Have some requests waiting for ${blockId}, notify them")
+//            val fetchLock = blocksOnTheAir.remove(blockId)
+//            fetchLock.lock.synchronized {
+//              fetchLock.waiting = 0
+//              fetchLock.lock.notifyAll()
+//            }
+//          }
+        }
+      })
+  }
+
+//  def addBlockOnTheAir(blockId: BlockId): Boolean = {
+//    if (blocksOnTheAir.containsKey(blockId)) {
+//      return false
+//    }
+//    val fetchLock = new BlockFetchLock(1, new Object)
+//    blocksOnTheAir.putIfAbsent(blockId, fetchLock)
+//    return true
+//  }
+
+//  def removeBlockOnTheAir(blockId: BlockId): Unit = {
+//    val fetchLock = blocksOnTheAir.remove(blockId)
+//    fetchLock.lock.synchronized {
+//      fetchLock.waiting = 0
+//      fetchLock.lock.notifyAll()
+//    }
+//  }
+
+//  def waitForBlock(blockId: BlockId): Future[Unit] = {
+//    Future {
+//      val fetchLock = blocksOnTheAir.get(blockId)
+//      fetchLock.lock.synchronized {
+//        while (fetchLock.waiting > 0) {
+//          fetchLock.lock.wait()
+//        }
+//      }
+//    } (futureExecutionContext)
+//  }
+
   /**
    * Get a block from the block manager (either local or remote).
    *
@@ -602,13 +696,11 @@ private[scache] class BlockManager(
       logInfo(s"Found block $blockId locally")
       return local
     }
-    logInfo("I'm here")
     val remote = getRemoteValues(blockId)
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
       return remote
     }
-    logInfo(s"$blockId doesn't exists")
     None
   }
 
@@ -616,21 +708,23 @@ private[scache] class BlockManager(
    * Downgrades an exclusive write lock to a shared read lock.
    */
   def downgradeLock(blockId: BlockId): Unit = {
-    blockInfoManager.downgradeLock(blockId)
+    // blockInfoManager.downgradeLock(blockId)
   }
 
   /**
    * Release a lock on the given block.
    */
   def releaseLock(blockId: BlockId): Unit = {
-    blockInfoManager.unlock(blockId)
+    if (!blockInfoManager.unlockWrite(blockId)) {
+      blockInfoManager.unlockRead(blockId)
+    }
   }
 
   /**
    * Registers a task with the BlockManager in order to initialize per-task bookkeeping structures.
    */
   def registerTask(taskAttemptId: Long): Unit = {
-    blockInfoManager.registerTask(taskAttemptId)
+    // blockInfoManager.registerTask(taskAttemptId)
   }
 
   /**
@@ -638,9 +732,9 @@ private[scache] class BlockManager(
    *
    * @return the blocks whose locks were released.
    */
-  def releaseAllLocksForTask(taskAttemptId: Long): Seq[BlockId] = {
-    blockInfoManager.releaseAllLocksForTask(taskAttemptId)
-  }
+  // def releaseAllLocksForTask(taskAttemptId: Long): Seq[BlockId] = {
+  //   blockInfoManager.releaseAllLocksForTask(taskAttemptId)
+  // }
 
   /**
    * Retrieve the given block if it exists, otherwise call the provided `makeIterator` method
@@ -864,10 +958,9 @@ private[scache] class BlockManager(
       res
     } finally {
       if (blockWasSuccessfullyStored) {
+        blockInfoManager.unlockWrite(blockId)
         if (keepReadLock) {
-          blockInfoManager.downgradeLock(blockId)
-        } else {
-          blockInfoManager.unlock(blockId)
+          blockInfoManager.lockForReading(blockId)
         }
       } else {
         blockInfoManager.removeBlock(blockId)
@@ -961,6 +1054,7 @@ private[scache] class BlockManager(
         if (tellMaster) {
           reportBlockStatus(blockId, info, putBlockStatus)
         }
+        // mapOutputTracker.updateMapBlockSize(blockId, size)
 
         logDebug("Put block %s locally took %s".format(blockId, Utils.getUsedTimeMs(startTimeMs)))
         if (level.replication > 1) {
@@ -1208,8 +1302,8 @@ private[scache] class BlockManager(
   }
 
   // test function
-  def dropFromMemoryTest[T: ClassTag](blockId: BlockId): StorageLevel = {
-    dropFromMemory[T](blockId, null: () => Either[Array[T], ChunkedByteBuffer])
+  def dropFromMemoryTest[T: ClassTag](blockId: BlockId, data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
+    dropFromMemory[T](blockId, data)
   }
 
   /**
@@ -1227,7 +1321,7 @@ private[scache] class BlockManager(
       blockId: BlockId,
       data: () => Either[Array[T], ChunkedByteBuffer]): StorageLevel = {
     logInfo(s"Dropping block $blockId from memory")
-    val info = blockInfoManager.assertBlockIsLockedForWriting(blockId)
+    val info = blockInfoManager.assertExistence(blockId)
     var blockIsUpdated = false
     val level = info.level
 
@@ -1247,6 +1341,8 @@ private[scache] class BlockManager(
       }
       blockIsUpdated = true
     }
+    // update storage level
+    info.level = StorageLevel.DISK_ONLY
 
     // Actually drop from memory store
     val droppedMemorySize =
