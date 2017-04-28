@@ -1,12 +1,12 @@
 package org.scache.deploy
 
-import java.io.File
+import java.io.{File, RandomAccessFile}
 import java.lang.Exception
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.FileChannel.MapMode
 import java.nio.file.StandardOpenOption
-import java.util.concurrent.{TimeoutException, TimeUnit}
+import java.util.concurrent.{TimeUnit, TimeoutException}
 
 import org.apache.commons.httpclient.util.TimeoutController.TimeoutException
 import org.scache.deploy.DeployMessages._
@@ -174,19 +174,17 @@ class ScacheClient(
       return true
     }
     try {
-        val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
-        val channel = FileChannel.open(f.toPath,
-          StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.DELETE_ON_CLOSE)
-        val buffer = channel.map(MapMode.READ_WRITE, 0, size)
+        val f = new RandomAccessFile(s"${ScacheConf.scacheLocalDir}/$blockId", "rw")
+        val channel = f.getChannel.map(FileChannel.MapMode.READ_WRITE, 0, size)
         // close the channel and delete the tmp file
         val data = new Array[Byte](size)
-        buffer.get(data)
+        channel.get(data)
         logDebug(s"Get block ${blockId} with $size, hash code: ${data.toSeq.hashCode()}")
         val buf = ByteBuffer.wrap(data)
         val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
         blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.OFF_HEAP, tellMaster = false)
         logDebug(s"Put block $blockId with size $size successfully")
-        channel.close()
+        f.close()
         true
 
         // start block transmission immediately
@@ -213,10 +211,9 @@ class ScacheClient(
           assert(chunks.size == 1)
           val bytes = new Array[Byte](chunks(0).remaining())
           chunks(0).get(bytes)
-          val f = new File(s"${ScacheConf.scacheLocalDir}/${blockId.toString}")
-          val channel = FileChannel.open(f.toPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
-          val writeBuf = channel.map(MapMode.READ_WRITE, 0, bytes.length)
-          writeBuf.put(bytes, 0, bytes.length)
+          val f = new RandomAccessFile(s"${ScacheConf.scacheLocalDir}/$blockId", "rw")
+          val channel = f.getChannel.map(FileChannel.MapMode.READ_WRITE, 0, bytes.length)
+          channel.put(bytes, 0, bytes.length)
           return bytes.length
         case _ =>
           Thread.sleep(sleepMS)

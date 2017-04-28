@@ -1,6 +1,6 @@
 package org.scache.deploy
 
-import java.io.{ByteArrayOutputStream, File, ObjectOutputStream}
+import java.io.{ByteArrayOutputStream, File, ObjectOutputStream, RandomAccessFile}
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.FileChannel.MapMode
@@ -49,14 +49,13 @@ class Daemon(
     }
     logDebug(s"Start copying block $blockId with size $rawLen")
     doAsync[Unit](s"Copy block $blockId") {
-      val f = new File(s"${ScacheConf.scacheLocalDir}/$blockId")
-      val channel = FileChannel.open(f.toPath, StandardOpenOption.READ,
-        StandardOpenOption.WRITE, StandardOpenOption.CREATE)
-      val buf = channel.map(FileChannel.MapMode.READ_WRITE, 0, data.length)
-      buf.put(data)
+      val startTime = System.currentTimeMillis()
+      val f = new RandomAccessFile(s"${ScacheConf.scacheLocalDir}/$blockId", "rw")
+      val channel = f.getChannel.map(FileChannel.MapMode.READ_WRITE, 0, data.length)
+      channel.put(data)
       val res = clientRef.askWithRetry[Boolean](PutBlock(scacheBlockId, data.length))
       if (res) {
-        logDebug(s"Copy block $blockId succeeded")
+        logDebug(s"Copy block $blockId succeeded in ${System.currentTimeMillis() - startTime} ms")
       } else {
         logDebug(s"Copy block $blockId failed")
       }
@@ -68,16 +67,17 @@ class Daemon(
       logError(s"Unexpected block type, except ScacheBlockId, got ${scacheBlockId.getClass.getSimpleName}")
       return None
     }
+    val startTime = System.currentTimeMillis()
     val size = clientRef.askWithRetry[Int](GetBlock(scacheBlockId))
     if (size < 0) {
       return None
     }
-    val f = new File(s"${ScacheConf.scacheLocalDir}/$blockId")
-    val channel = FileChannel.open(f.toPath, StandardOpenOption.READ,
-      StandardOpenOption.WRITE, StandardOpenOption.CREATE)
-    val buf = channel.map(FileChannel.MapMode.READ_WRITE, 0, size)
+    val f = new RandomAccessFile(s"${ScacheConf.scacheLocalDir}/$blockId", "rw")
+    val channel = f.getChannel.map(FileChannel.MapMode.READ_WRITE, 0, size)
     val arrayBuf = new Array[Byte](size)
-    buf.get(arrayBuf)
+    channel.get(arrayBuf)
+    f.close()
+    logDebug(s"Get block $blockId succeeded in ${System.currentTimeMillis() - startTime} ms")
     Some(arrayBuf)
   }
   def registerShuffles(jobId: Int, shuffleIds: Array[Int], maps: Array[Int], reduces: Array[Int]): Unit = {
