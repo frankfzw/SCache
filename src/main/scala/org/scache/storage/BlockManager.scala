@@ -211,6 +211,10 @@ private[scache] class BlockManager(
   //     }
   //   }
   // }
+  def updateMapBlocks(shuffleKey: ShuffleKey, mapId: Int, sizeArr: Array[Long]): Unit = {
+    logInfo(s"Shuffle $shuffleKey, map $mapId finished with size ${sizeArr.mkString(", ")}")
+    master.updateMapBlocks(blockManagerId, shuffleKey, mapId, sizeArr)
+  }
 
   /**
    * Report all blocks to the BlockManager again. This may be necessary if we are dropped
@@ -328,27 +332,33 @@ private[scache] class BlockManager(
   }
 
 
-  def startMapFetch(bmId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+  def startMapFetch(bmIds: Array[BlockManagerId], appName: String, jobId: Int, shuffleId: Int, mapIds: Array[Int]): Unit = {
     // only pre-fetch remote bytes
-    if (bmId.executorId.equals(executorId)) {
+    val tuples = bmIds.zip(mapIds)
+    val requests = for ((bmId, mapId) <- tuples if (!(bmId.executorId.equals(executorId))))
+      yield (bmId, mapId)
+    if (requests.size == 0) {
       return
     }
     val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
     val shuffleStatus = mapOutputTracker.getShuffleStatuses(shuffleKey)
-    val bIds = new ArrayBuffer[String]()
-    for (r <- shuffleStatus.reduceArray) {
-      if (r.host.equals(blockManagerId.host)) {
-        val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
-        bIds.append(bId.toString)
+    for ((bmId, mapId) <- requests) {
+      val bIds = new ArrayBuffer[String]()
+      for (r <- shuffleStatus.reduceArray) {
+        if (r.host.equals(blockManagerId.host)) {
+          val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
+          bIds.append(bId.toString)
+        }
       }
+      if (bIds.length == 0) {
+        logWarning("Got 0 blocks")
+        return
+      }
+      logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${bmId.host}, " +
+        s"${bIds.length} blocks totally")
+      asyncGetRemoteBlock(bmId, bIds.toArray)
     }
-    if (bIds.length == 0) {
-      logWarning("Got 0 blocks")
-      return
-    }
-    logDebug(s"Start to fetch ${appName}_${jobId}_${shuffleId}_${mapId} from ${bmId.host}, " +
-      s"${bIds.length} blocks totally")
-    asyncGetRemoteBlock(bmId, bIds.toArray)
+
   }
 
   /**
@@ -641,7 +651,7 @@ private[scache] class BlockManager(
           val bytes = ByteStreams.toByteArray(data.createInputStream())
           val buf = ByteBuffer.wrap(bytes)
           val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
-          putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.MEMORY_ONLY, tellMaster = false)
+          putBytes(BlockId.apply(blockId), chunkedBuffer, StorageLevel.OFF_HEAP, tellMaster = false)
           logDebug(s"Got remote block ${blockId} from ${bmId.host} with size ${bytes.length}")
 //          if (blocksOnTheAir.contains(blockId)) {
 //            logDebug(s"Have some requests waiting for ${blockId}, notify them")

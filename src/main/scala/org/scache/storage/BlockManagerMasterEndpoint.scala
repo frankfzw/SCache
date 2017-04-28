@@ -17,6 +17,7 @@
 
 package org.scache.storage
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.{HashMap => JHashMap}
 
 import org.scache.MapOutputTrackerMaster
@@ -24,7 +25,7 @@ import org.scache.MapOutputTrackerMaster
 import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import org.scache.util.{ScacheConf, Logging, Utils, ThreadUtils}
+import org.scache.util._
 import org.scache.rpc.{RpcCallContext, RpcEndpointRef, RpcEnv, ThreadSafeRpcEndpoint}
 import org.scache.storage.BlockManagerMessages._
 
@@ -52,6 +53,8 @@ class BlockManagerMasterEndpoint(
   private val askThreadPool = ThreadUtils.newDaemonCachedThreadPool("block-manager-ask-thread-pool")
   private implicit val askExecutionContext = ExecutionContext.fromExecutorService(askThreadPool)
 
+  private val unfetchedMap = new ConcurrentHashMap[ShuffleKey, mutable.HashMap[Int, BlockManagerId]]().asScala
+
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxMemSize, slaveEndpoint) =>
       register(blockManagerId, maxMemSize, slaveEndpoint)
@@ -61,6 +64,9 @@ class BlockManagerMasterEndpoint(
         UpdateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size) =>
       context.reply(updateBlockInfo(blockManagerId, blockId, storageLevel, deserializedSize, size))
       // listenerBus.post(ScacheListenerBlockUpdated(BlockUpdatedInfo(_updateBlockInfo)))
+
+    case UpdateMapBlocks(blockManagerId, shuffleKey, mapId, sizeArr) =>
+      context.reply(updateMapBlocks(blockManagerId, shuffleKey, mapId, sizeArr))
 
     case GetLocations(blockId) =>
       context.reply(getLocations(blockId))
@@ -351,18 +357,18 @@ class BlockManagerMasterEndpoint(
       locations = new mutable.HashSet[BlockManagerId]
       blockLocations.put(blockId, locations)
       // update block status in mapoutputtracker, it may trigger the map pre-fetch
-      if (mapOutputTrackerMaster.updateMapBlocksStatus(blockId) == 0) {
-        val sbId = blockId.asInstanceOf[ScacheBlockId]
-        logInfo(s"Start map fetch notification for ${sbId.app}_${sbId.shuffleId}_${sbId.mapId}")
-        Future {
-          for (info <- blockManagerInfo.values) {
-            val res = info.slaveEndpoint.askWithRetry[Boolean](StartMapFetch(blockManagerId, sbId.app, sbId.jobId, sbId.shuffleId, sbId.mapId))
-            if (!res) {
-              logError(s"Start map fetch notification failed on ${info.blockManagerId.host}")
-            }
-          }
-        }
-      }
+//      if (mapOutputTrackerMaster.updateMapBlocksStatus(blockId) == 0) {
+//        val sbId = blockId.asInstanceOf[ScacheBlockId]
+//        logInfo(s"Start map fetch notification for ${sbId.app}_${sbId.shuffleId}_${sbId.mapId}")
+//        Future {
+//          for (info <- blockManagerInfo.values) {
+//            val res = info.slaveEndpoint.askWithRetry[Boolean](StartMapFetch(blockManagerId, sbId.app, sbId.jobId, sbId.shuffleId, sbId.mapId))
+//            if (!res) {
+//              logError(s"Start map fetch notification failed on ${info.blockManagerId.host}")
+//            }
+//          }
+//        }
+//      }
     }
 
     if (storageLevel.isValid) {
@@ -374,6 +380,40 @@ class BlockManagerMasterEndpoint(
     // Remove the block from master tracking if it has been removed on all slaves.
     if (locations.size == 0) {
       blockLocations.remove(blockId)
+    }
+    true
+  }
+
+  private def updateMapBlocks
+    (blockManagerId: BlockManagerId, shuffleKey: ShuffleKey, mapId: Int, sizeArr: Array[Long]): Boolean= {
+    // update block infos
+    for (i <- 0 until sizeArr.length) {
+      val bId = ScacheBlockId(shuffleKey.appName, shuffleKey.jobId, shuffleKey.shuffleId, mapId, i)
+      val storageLevel = StorageLevel.OFF_HEAP
+      val memSize = sizeArr(i)
+      updateBlockInfo(blockManagerId, bId, storageLevel, memSize, 0)
+    }
+    val res = mapOutputTrackerMaster.updateMapEndStatus(shuffleKey, mapId, sizeArr)
+    if (res) {
+      // we can start fetch now
+      var unfetched = new mutable.HashMap[Int, BlockManagerId]()
+      if (unfetchedMap.contains(shuffleKey)) {
+        unfetched = unfetchedMap.remove(shuffleKey).get
+      }
+      unfetched.put(mapId, blockManagerId)
+      Future {
+        for (info <- blockManagerInfo.values) {
+          val arr = unfetched.toArray
+          val ret = info.slaveEndpoint.askWithRetry[Boolean](
+            StartMapFetch(arr.map(_._2), shuffleKey.appName, shuffleKey.jobId, shuffleKey.shuffleId, arr.map(_._1)))
+          if (!ret) {
+            logError(s"Start map fetch notification failed on ${info.blockManagerId.host}")
+          }
+        }
+      }
+    } else {
+      val unfetched = unfetchedMap.getOrElseUpdate(shuffleKey, new mutable.HashMap[Int, BlockManagerId]())
+      unfetched.put(mapId, blockManagerId)
     }
     true
   }
@@ -524,7 +564,7 @@ private[scache] class BlockManagerInfo(
   def blocks: JHashMap[BlockId, BlockStatus] = _blocks
 
   // This does not include broadcast blocks.
-  def cachedBlocks: collection.Set[BlockId] = _cachedBlocks
+  def cachedBlocks: scala.collection.Set[BlockId] = _cachedBlocks
 
   override def toString: String = "BlockManagerInfo " + timeMs + " " + _remainingMem
 

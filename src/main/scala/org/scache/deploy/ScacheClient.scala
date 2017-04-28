@@ -90,8 +90,10 @@ class ScacheClient(
 
   override def receive: PartialFunction[Any, Unit] = {
     // from deamon
-    case MapEnd(appName, jobId, shuffleId, mapId) =>
-      mapEnd(appName, jobId, shuffleId, mapId)
+    case MapStart(appName, jobId, shuffleId, mapId) =>
+      mapStart(appName, jobId, shuffleId, mapId)
+    case MapEnd(appName, jobId, shuffleId, mapId, sizes) =>
+      mapEnd(appName, jobId, shuffleId, mapId, sizes)
     // from master
     case _ =>
       logError("Empty message received !")
@@ -133,9 +135,16 @@ class ScacheClient(
     }
   }
 
-  def mapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
-    logInfo(s"Map $appName:$jobId:$shuffleId:$mapId finished")
+  def mapStart(appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+    logInfo(s"Map $appName:$jobId:$shuffleId:$mapId start")
     // master.ask(MapEndToMaster(appName, jobId, shuffleId, mapId))
+  }
+
+  def mapEnd(appName: String, jobId: Int, shuffleId: Int, mapId: Int, sizes: Array[Long]): Unit = {
+    logInfo(s"Map $appName:$jobId:$shuffleId:$mapId ends")
+    // master.ask(MapEndToMaster(appName, jobId, shuffleId, mapId))
+    val shuffleKey = ShuffleKey(appName, jobId, shuffleId)
+    blockManager.updateMapBlocks(shuffleKey, mapId, sizes)
   }
 
   // def startMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int): Unit = {
@@ -149,7 +158,6 @@ class ScacheClient(
   //   val bIds = new ArrayBuffer[String]()
   //   for (r <- shuffleStatus.reduceArray) {
   //     if (r.host.equals(hostname)) {
-  //       // TODO start fetch and add call back to store block in memory
   //       val bId = ScacheBlockId(appName, jobId, shuffleId, mapId, r.id)
   //       bIds.append(bId.toString)
   //     }
@@ -176,7 +184,7 @@ class ScacheClient(
         logDebug(s"Get block ${blockId} with $size, hash code: ${data.toSeq.hashCode()}")
         val buf = ByteBuffer.wrap(data)
         val chunkedBuffer = new ChunkedByteBuffer(Array(buf))
-        blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.MEMORY_ONLY)
+        blockManager.putBytes(blockId, chunkedBuffer, StorageLevel.OFF_HEAP, tellMaster = false)
         logDebug(s"Put block $blockId with size $size successfully")
         channel.close()
         true
@@ -193,8 +201,8 @@ class ScacheClient(
   }
 
   def sendBlockToDaemon(context: RpcCallContext, blockId: BlockId): Int= {
-    val sleepMS = 100
-    val retryTimes = conf.getInt("scache.block.fetching.retry", 5)
+    val sleepMS = conf.getInt("scache.block.fetching.sleep", 200)
+    val retryTimes = conf.getInt("scache.block.fetching.retry", 50)
     var times = 0
     while (times < retryTimes) {
       logDebug(s"Try to fetch block ${blockId} at ${times} time")

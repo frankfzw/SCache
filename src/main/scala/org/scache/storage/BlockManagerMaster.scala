@@ -20,8 +20,7 @@ package org.scache.storage
 import scala.collection.Iterable
 import scala.collection.generic.CanBuildFrom
 import scala.concurrent.Future
-
-import org.scache.util.{ScacheConf, Logging, RpcUtils, ThreadUtils}
+import org.scache.util._
 import org.scache.rpc.RpcEndpointRef
 import org.scache.storage.BlockManagerMessages._
 
@@ -77,6 +76,18 @@ class BlockManagerMaster(
   def getLocations(blockIds: Array[BlockId]): IndexedSeq[Seq[BlockManagerId]] = {
     driverEndpoint.askWithRetry[IndexedSeq[Seq[BlockManagerId]]](
       GetLocationsMultipleBlockIds(blockIds))
+  }
+
+  def updateMapBlocks(blockManagerId: BlockManagerId, shuffleKey: ShuffleKey, mapId: Int, sizeArr: Array[Long]): Unit = {
+    val res =
+      driverEndpoint.askWithRetry[Boolean](UpdateMapBlocks(blockManagerId, shuffleKey, mapId, sizeArr))
+    if (res) {
+      logInfo(s"Report map end succeeded, $shuffleKey, map id $mapId" +
+        s" sizes: ${sizeArr.mkString(", ")}")
+    } else {
+      logError(s"Report map end failed, $shuffleKey, map id $mapId" +
+        s" sizes: ${sizeArr.mkString(", ")}")
+    }
   }
 
   /**

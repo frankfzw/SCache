@@ -20,7 +20,7 @@ package org.scache.storage
 import java.io.{Externalizable, ObjectInput, ObjectOutput}
 
 import org.scache.rpc.RpcEndpointRef
-import org.scache.util.Utils
+import org.scache.util.{ShuffleKey, Utils}
 
 private[scache] object BlockManagerMessages {
   //////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +42,12 @@ private[scache] object BlockManagerMessages {
   case class RemoveBroadcast(broadcastId: Long, removeFromDriver: Boolean = true)
     extends ToBlockManagerSlave
 
-  case class StartMapFetch(blockManagerId: BlockManagerId, appName: String, jobId: Int, shuffleId: Int, mapId: Int) extends ToBlockManagerSlave
+  case class StartMapFetch(
+      bmIds: Array[BlockManagerId],
+      appName: String,
+      jobId: Int,
+      shuffleId: Int,
+      mapIds: Array[Int]) extends ToBlockManagerSlave
 
   /**
    * Driver -> Executor message to trigger a thread dump.
@@ -87,6 +92,9 @@ private[scache] object BlockManagerMessages {
       diskSize = in.readLong()
     }
   }
+
+  case class UpdateMapBlocks(blockManagerId: BlockManagerId, shuffleKey: ShuffleKey, mapId: Int, sizeArr: Array[Long])
+    extends ToBlockManagerMaster
 
   case class GetLocations(blockId: BlockId) extends ToBlockManagerMaster
 

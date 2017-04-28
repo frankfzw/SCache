@@ -90,11 +90,19 @@ class Daemon(
       }
     }
   }
-  def mapEnd(jobId: Int, shuffleId: Int, mapId: Int): Unit = {
-    doAsync[Unit] ("Map End") {
-      clientRef.send(MapEnd(platform, jobId, shuffleId, mapId))
+
+  def mapStart(jobId: Int, shuffleId: Int, mapId: Int): Unit = {
+    doAsync[Unit] ("Map Start") {
+      clientRef.send(MapStart(platform, jobId, shuffleId, mapId))
     }
   }
+
+  def mapEnd(jobId: Int, shuffleId: Int, mapId: Int, sizes: Array[Long]): Unit = {
+    doAsync[Unit] ("Map End") {
+      clientRef.send(MapEnd(platform, jobId, shuffleId, mapId, sizes))
+    }
+  }
+
   def getShuffleStatus(jobId: Int, shuffleId: Int): mutable.HashMap[Int, Array[String]] = {
     val statuses = clientRef.askWithRetry[ShuffleStatus](GetShuffleStatus(platform, jobId, shuffleId))
     val ret = new mutable.HashMap[Int, Array[String]]
