@@ -29,6 +29,7 @@ class Daemon(
     ThreadUtils.newDaemonCachedThreadPool("scache-daemon-async-thread-pool")
   private implicit val asyncExecutionContext = ExecutionContext.fromExecutorService(asyncThreadPool)
 
+  _logDir = scacheHome
   private val conf = new ScacheConf(scacheHome)
   private val clientPort = conf.getInt("scache.client.port", 5678)
   private val daemonPort = conf.getInt("scache.daemon.port", 12345)
