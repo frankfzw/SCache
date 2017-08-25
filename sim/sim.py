@@ -8,13 +8,13 @@ import random
 
 
 trace_date = ['2012-10']
-res_path = '/mnt/d/tmp'
+res_path = '.'
 # schedule = ['fifo', 'round_robin_pre', 'round_robin']
 # schedule = ['fifo', 'round_robin_pre', 'scache']
-# schedule = ['fifo', 'ideal', 'scache', 'round_robin_pre']
-schedule = ['reduce_cdf']
-hosts_num = 64
-round_num = [1, 2, 3, 4, 5]
+schedule = ['fifo', 'ideal', 'scache', 'round_robin_pre']
+# schedule = ['reduce_cdf']
+hosts_num = 10
+round_num = 10
 test_ids = ['20170324093238_1']
 
 def deal_na_int(x):
@@ -23,6 +23,16 @@ def deal_na_int(x):
 	else:
 		return int(x)
 
+def expand_task(task, r):
+	l = len(task)
+	total = hosts_num * r
+	res = task
+	i = 0
+	while len(res) < total:
+		res = np.append(res, task[i])
+		i = (i + 1) % l
+	# np.random.shuffle(res)
+	return res
 
 def find_min(times):
 	tag = times[0]
@@ -34,8 +44,9 @@ def find_min(times):
 	return index
 
 
-def round_robin_pre_schedule(reduce_tasks, num_hosts):
-	times = np.zeros(num_hosts)
+def round_robin_pre_schedule(reduce_tasks, num_hosts, r):
+	h = max(num_hosts, hosts_num)
+	times = np.zeros(h)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
 	shuffle_time = np.array(list(reduce_tasks['shuffleTime'].values))
@@ -43,33 +54,41 @@ def round_robin_pre_schedule(reduce_tasks, num_hosts):
 	start_time = np.array(list(reduce_tasks['startTime'].values))
 	shuffle_time = sort_time - shuffle_time
 	run_time = finish_time - start_time - shuffle_time
+	if num_hosts < hosts_num:
+		run_time = expand_task(run_time, r)
 	for i in range(tasks_size):
 		# print '{}\t{}'.format(r['startTime'], r['finishTime'])
-		times[i % num_hosts] += run_time[i]
+		times[i % h] += run_time[i]
 	# print sum(times)
 	# print times
 	return np.amax(times)
 
-def round_robin_schedule(reduce_tasks, num_hosts):
-	times = np.zeros(num_hosts)
+def round_robin_schedule(reduce_tasks, num_hosts, r):
+	h = max(num_hosts, hosts_num)
+	times = np.zeros(h)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
 	start_time = np.array(list(reduce_tasks['startTime'].values))
 	run_time = finish_time - start_time
+	if num_hosts < hosts_num:
+		run_time = expand_task(run_time, r)
 	for i in range(tasks_size):
 		# print '{}\t{}'.format(r['startTime'], r['finishTime'])
-		times[i % num_hosts] += run_time[i]
+		times[i % h] += run_time[i]
 	# print sum(times)
 	# print times
 	return np.amax(times)
 
 
-def fifo_schedule(reduce_tasks, num_hosts):
-	times = np.zeros(num_hosts)
+def fifo_schedule(reduce_tasks, num_hosts, r):
+	h = max(num_hosts, hosts_num)
+	times = np.zeros(h)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
 	start_time = np.array(list(reduce_tasks['startTime'].values))
 	run_time = finish_time - start_time
+	if num_hosts < hosts_num:
+		run_time = expand_task(run_time, r)
 	if tasks_size < num_hosts:
 		for i in range(tasks_size):
 			times[i] += run_time[i]
@@ -79,8 +98,9 @@ def fifo_schedule(reduce_tasks, num_hosts):
 			times[index] += run_time[i]
 	return np.max(times)
 
-def scache_schedule(reduce_tasks, num_hosts):
-	times = np.zeros(num_hosts)
+def scache_schedule(reduce_tasks, num_hosts, r):
+	h = max(num_hosts, hosts_num)
+	times = np.zeros(h)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
 	start_time = np.array(list(reduce_tasks['startTime'].values))
@@ -88,6 +108,8 @@ def scache_schedule(reduce_tasks, num_hosts):
 	sort_time = np.array(list(reduce_tasks['sortTime'].values))
 	shuffle_time = sort_time - shuffle_time
 	run_time = finish_time - start_time - shuffle_time
+	if num_hosts < hosts_num:
+		run_time = expand_task(run_time, r)
 	if tasks_size < num_hosts:
 		for i in range(tasks_size):
 			times[i] += run_time[i]
@@ -98,8 +120,9 @@ def scache_schedule(reduce_tasks, num_hosts):
 	return np.max(times)
 
 
-def ideal_schedule(reduce_tasks, num_hosts):
-	times = np.zeros(num_hosts)
+def ideal_schedule(reduce_tasks, num_hosts, r):
+	h = max(num_hosts, hosts_num)
+	times = np.zeros(h)
 	tasks_size = len(reduce_tasks.index)
 	finish_time = np.array(list(reduce_tasks['finishTime'].values))
 	shuffle_time = np.array(list(reduce_tasks['shuffleTime'].values))
@@ -107,6 +130,8 @@ def ideal_schedule(reduce_tasks, num_hosts):
 	start_time = np.array(list(reduce_tasks['startTime'].values))
 	shuffle_time = sort_time - shuffle_time
 	run_time = finish_time - start_time - shuffle_time
+	if num_hosts < hosts_num:
+		run_time = expand_task(run_time, r)
 	run_time = np.sort(run_time)
 	tid = tasks_size - 1
 	while tid >= 0:
@@ -126,17 +151,17 @@ def reduce_cdf(reduce_tasks, num_hosts):
 	tmp = shuffle_time.astype(float) / run_time.astype(float)
 	return np.average(tmp)
 
-def do_schedule(reduce_tasks, num_hosts, scheme):
+def do_schedule(reduce_tasks, num_hosts, r, scheme):
 	if (scheme == 'fifo'):
-		return fifo_schedule(reduce_tasks, num_hosts)
+		return fifo_schedule(reduce_tasks, num_hosts, r)
 	elif (scheme == 'round_robin_pre'):
-		return round_robin_pre_schedule(reduce_tasks, num_hosts)
+		return round_robin_pre_schedule(reduce_tasks, num_hosts, r)
 	elif (scheme == 'round_robin'):
-		return round_robin_schedule(reduce_tasks, num_hosts)
+		return round_robin_schedule(reduce_tasks, num_hosts, r)
 	elif (scheme == 'ideal'):
-		return ideal_schedule(reduce_tasks, num_hosts)
+		return ideal_schedule(reduce_tasks, num_hosts, r)
 	elif (scheme == 'scache'):
-		return scache_schedule(reduce_tasks, num_hosts)
+		return scache_schedule(reduce_tasks, num_hosts, r)
 	elif (scheme == 'reduce_cdf'):
 		return reduce_cdf(reduce_tasks, num_hosts)
 	else:
@@ -264,7 +289,7 @@ def main():
 			print 'Stage completion time of {}: {}'.format(d, t)
 		return
 	for trace in trace_date:
-		trace_path = '/mnt/d/tmp/{}/attempt.csv'.format(trace)
+		trace_path = '{}/{}/attempt.csv'.format(res_path, trace)
 		field_names = {'jtid': int, 'jobid': int, 'tasktype': str, 'taskid': int, 'attempt': int, 'startTime': int, 'shuffleTime': int, 'sortTime': int, 'finishTime': int, 'status': int, 'rack': str, 'hostname': str}
 		converters = {'shuffleTime': deal_na_int, 'sortTime': deal_na_int, 'finishTime': deal_na_int, 'status': deal_na_int}
 		raw_talbe = pd.read_csv(filepath_or_buffer=trace_path, dtype=field_names, converters=converters)
@@ -283,8 +308,25 @@ def main():
 
 		jobids = np.array(list(jobids))
 
-		for r in round_num:
-			for scheme in schedule:
+		base_line = [0] * round_num
+		for r in range(1, round_num+1, 1):
+			print 'Processing base line round %d' % (r)
+			res = np.zeros(len(jobids))
+			for i in range(len(jobids)):
+				# if jobids[i] != 4817:
+				# 	continue
+				reduce_tasks = reduce_talbe.loc[(reduce_talbe['jobid'] == jobids[i]) & (reduce_talbe['status'] == 0)]
+				num_host = len(reduce_tasks.index) / r
+				t = do_schedule(reduce_tasks, num_host, r, 'fifo')
+				if t is None:
+					break
+				res[i] = t
+			base_line[r-1] = res
+
+		for scheme in schedule:
+			f = open('{}/{}_{}.csv'.format(res_path, trace, scheme), 'w')
+			f.write('round,time\n')
+			for r in range(1, round_num+1, 1):
 				print 'Processing %s with round %d' % (scheme, r)
 				res = np.zeros(len(jobids))
 				for i in range(len(jobids)):
@@ -292,13 +334,16 @@ def main():
 					# 	continue
 					reduce_tasks = reduce_talbe.loc[(reduce_talbe['jobid'] == jobids[i]) & (reduce_talbe['status'] == 0)]
 					num_host = len(reduce_tasks.index) / r
-					t = do_schedule(reduce_tasks, num_host, scheme)
+					# if num_host == 0:
+					# 	continue
+					t = do_schedule(reduce_tasks, num_host, r, scheme)
 					if t is None:
 						break
-					res[i] = t
+					res[i] = (base_line[r-1][i] - t) / base_line[r-1][i]
 				df = pd.DataFrame({'jid':jobids, 'time':res})
-				df.to_csv('{}/{}_{}_{}.csv'.format(res_path, scheme, trace, r))
+				# df.to_csv('{}/{}_{}_{}.csv'.format(res_path, scheme, trace, r))
 				print 'Average completion time of {} with round {}: {}'.format(scheme, r, np.average(res))
+				f.write('{},{}\n'.format(r, np.average(res)))
 
 
 
