@@ -1,6 +1,15 @@
 # SCache
 
-## System Overview
+For more detail, you can read our paper: [Efficient shuffle management with scache for dag computing frameworks](https://dl.acm.org/citation.cfm?id=3178510)
+
+- [System Overview](#system-overview)
+
+- [Performance](#performance)
+
+- [How to Use SCache](#how-to-use-scache)
+
+System Overview
+--
 
 SCache is a distributed memory cache system that particularly focuses on shuffle optimization. By extracting and analyzing shuffle dependencies prior to the actual task execution, SCache can adopt heuristic pre-scheduling combining with shuffle size prediction to pre-fetch shuffle data and balance load on each node. Meanwhile, SCache takes full advantage of the system memory to accelerate the shuffle process.
 
@@ -8,8 +17,6 @@ SCache is a distributed memory cache system that particularly focuses on shuffle
 <p align="center">Figure 1:  Workflow Comparison between Legacy DAG Computing Frameworks and Frameworks with SCache</p>
 
 SCache consists of three components: a distributed shuffle data management system, a DAG co-scheduler, and a worker daemon. As a plug-in system, SCache needs to rely on a DAG framework. As shown in Figure 2, SCache employs the legacy master-slaves architecture like GFS for the shuffle data management system. The master node of SCache coordinates the shuffle blocks globally with ap- plication context. The worker node reserves memory to store blocks. The coordination provides two guarantees: (a) data is stored in memory before tasks start and (b) data is scheduled on-off memory with all-or-nothing and context- aware constraints. The daemon bridges the communication between DAG framework and SCache. The co-scheduler is dedicated to pre-schedule reduce tasks with DAG information and enforce the scheduling results to original scheduler in framework.
-
-For more detail, you can read our paper: [Efficient shuffle management with scache for dag computing frameworks](https://dl.acm.org/citation.cfm?id=3178510)
 
 <p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/architecture.png" width="50%"/></p>
 <p align="center">Figure 2: SCache Architecture</p>
@@ -32,7 +39,7 @@ We reveal the performance of SCache with comprehensive workloads and benchmarks.
 
     Terasort consists of two consecutive shuffles. The first shuffle reads the input data and uses a hash partition function for re-partitioning. As shown in Figure 5a, Spark with SCache runs 2 × faster during the reduce stage of the first shuffle. It further proves the effectiveness of SCache’s optimization.
 
-<p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/terasort.png" width="30%"/></p>
+<p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/terasort.png" width="40%"/></p>
 <p align="center">Figure 5: Terasort Evaluation</p>
 
 3. At last, in order to prove the performance gain of SCache with a real production workload, we evaluate Spark [TPC-DS](https://github.com/databricks/spark-sql-perf) and present the overall performance improvement.
@@ -42,24 +49,38 @@ We reveal the performance of SCache with comprehensive workloads and benchmarks.
 <p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/tpc-ds.png" width="85%"/></p>
 <p align="center">Figure 6: TPC-DS Benchmark Evaluation</p>
 
-## How to Use
+## How to Use SCache
 
-1. `sbt publishM2` Publish SCache jar to local maven repository.
+1. Use sbt to publish SCache jar in local maven repository:
 
-2. `sbt assembly` Create fat jar of SCache
+    `sbt publishM2`
 
-3. Add IP or hostname of slaves in `conf/slaves`
+2. Use sbt to create fat jar of SCache:
 
-4. `sbin/copy-dir.sh` Distribute the code to cluster.
+    `sbt assembly`
 
-5. Build Hadoop from [here](https://github.com/frankfzw/hadoop/tree/scache)
+3. Configure IP address of slaves in:
 
-6. Edit `etc/hadoop/mapred-site.xml`, set `mapreduce.job.map.output.collector.class` to `org.apache.hadoop.mapred.MapTask$ScacheOutputBuffer` , set `mapreduce.job.reduce.shuffle.consumer.plugin.class` to `org.apache.hadoop.mapreduce.task.reduce.ScacheShuffle` and set `mapreduce.scache.home` to `your/scache/home`
+    `conf/slaves`
+
+4. Distribute the code of SCache worker to cluster:
+
+    `sbin/copy-dir.sh`
+
+5. Build adapted Hadoop from [here](https://github.com/frankfzw/hadoop/tree/scache) or adapted Spark from [here](https://github.com/frankfzw/spark-scache/tree/scache).
+
+6. Edit `etc/hadoop/mapred-site.xml`:
+
+    - Set `mapreduce.job.map.output.collector.class` to `org.apache.hadoop.mapred.MapTask$ScacheOutputBuffer`
+    - Set `mapreduce.job.reduce.shuffle.consumer.plugin.class` to `org.apache.hadoop.mapreduce.task.reduce.ScacheShuffle`
+    - Set `mapreduce.scache.home` to `your/scache/home`
 
 6. Copy `config-1.2.1.jar`, `scache_2.11-0.1-SNAPSHOT.jar` and `scala-library.jar` to `hadoop-home/share/hadoop/yarn/lib`. You can find these jars in local maven/ivy repository and local scala home.
 
 7. Distribute hadoop code in cluster.
 
-8. `sbin/start-scache.sh` Start SCache
+8. Start SCache:
 
-9. Start Hadoop and submit jobs.
+    `sbin/start-scache.sh` 
+
+9. Start Hadoop and submit your jobs.
