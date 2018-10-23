@@ -5,6 +5,8 @@ For more detail, you can read our paper: [Efficient shuffle management with scac
 - [System Overview](#system-overview)
 
 - [Performance](#performance)
+    - [Hadoop Mapreduce with SCache](#hadoop-mapreduce-with-scache)
+    - [Spark with SCache](#spark-with-scache)
 
 - [How to Use SCache](#how-to-use-scache)
 
@@ -23,31 +25,40 @@ SCache consists of three components: a distributed shuffle data management syste
 
 ## Performance
 
+### Hadoop MapReduce with SCache
+
+- Hadoop MapReduce with SCache starts pre-fetching in the map phase. This avoids the reduce phase waiting for the shuffle data. Furthermore, pre-fetching utilizes the idle I/O throughput in the map phase. As shown in Figure 3, after better fine-grained utilization of hardware resources, Hadoop MapReduce with SCache optimizes Terasort overall completion time by up to 15% and an average of 13% with input data sizes from 128GB to 512GB.
+
+<p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/hadoop.png" width="50%"/></p>
+<p align="center">Figure 3: Hadoop MapReduce Terasort completion time</p>
+
+### Spark with SCache
+
 We reveal the performance of SCache with comprehensive workloads and benchmarks.
-1. Firstly, we run a job with single shuffle to analyze hardware utilization and see the impacts of different components from the scope of a task to a job. The performance evaluation in Figure 15 shows the con- sistent results with our observation of hardware utilization. For each stage, we pick the task that has median completion time.
+1. Firstly, we run a job with single shuffle to analyze hardware utilization and see the impacts of different components from the scope of a task to a job. The performance evaluation in Figure 5 shows the consistent results with our observation of hardware utilization. For each stage, we pick the task that has median completion time.
 
-    In the map task, the disk operations are replaced by the memory copies to decouple the shuffle write. It helps eliminate 40% of shuffle write time (Figure 4a), which leads to a 10% improvement of map stage completion time in Figure 3a.
+    In the map task, the disk operations are replaced by the memory copies to decouple the shuffle write. It helps eliminate 40% of shuffle write time (Figure 5a), which leads to a 10% improvement of map stage completion time in Figure 4a.
 
-    In the reduce task, most of the shuffle overhead is introduced by network transfer delay. By doing shuffle data pre-fetching based on the pre-scheduling results, the explicit network transfer is perfectly overlapped in the map stage. As a result, the combination of these optimizations decreases 100% overhead of the shuffle read in a reduce task (Figure 4b). In addition, the heuristic algorithm can achieve a balanced pre-scheduling result, thus providing 80% improvement in reduce stage completion time (Figure 3b).
+    In the reduce task, most of the shuffle overhead is introduced by network transfer delay. By doing shuffle data pre-fetching based on the pre-scheduling results, the explicit network transfer is perfectly overlapped in the map stage. As a result, the combination of these optimizations decreases 100% overhead of the shuffle read in a reduce task (Figure 5b). In addition, the heuristic algorithm can achieve a balanced pre-scheduling result, thus providing 80% improvement in reduce stage completion time (Figure 4b).
 
     In overall, SCache can help Spark decrease by 89% overhead of the whole shuffle process.
 
 <p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/perf1.png" width="85%"/></p>
-<p align="center">Figure 3 & 4: Stage Completion Time and Median Task Completion Time of Single Shuffle Test</p>
+<p align="center">Figure 4 & 5: Stage Completion Time and Median Task Completion Time of Single Shuffle Test</p>
 
 2. Secondly, we use a recognized shuffle intensive benchmark — Terasort to evaluate SCache with different data partition schemes.
 
-    Terasort consists of two consecutive shuffles. The first shuffle reads the input data and uses a hash partition function for re-partitioning. As shown in Figure 5a, Spark with SCache runs 2 × faster during the reduce stage of the first shuffle. It further proves the effectiveness of SCache’s optimization.
+    Terasort consists of two consecutive shuffles. The first shuffle reads the input data and uses a hash partition function for re-partitioning. As shown in Figure 6a, Spark with SCache runs 2 × faster during the reduce stage of the first shuffle. It further proves the effectiveness of SCache’s optimization.
 
 <p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/terasort.png" width="40%"/></p>
-<p align="center">Figure 5: Terasort Evaluation</p>
+<p align="center">Figure 6: Terasort Evaluation</p>
 
 3. At last, in order to prove the performance gain of SCache with a real production workload, we evaluate Spark [TPC-DS](https://github.com/databricks/spark-sql-perf) and present the overall performance improvement.
 
-    TPC-DS benchmark is designed for modeling multiple users sub- mitting varied queries. TPC-DS contains 99 queries and is considered as the standardized industry benchmark for testing big data systems. As shown in Figure 6, the horizontal axis is query name and the vertical axis is query completion time. The overall reduction portion of query time that SCache achieved is 40% on average. Since this evaluation presents the overall job completion time of queries, we believe that our shuffle optimization is promising.
+    TPC-DS benchmark is designed for modeling multiple users sub- mitting varied queries. TPC-DS contains 99 queries and is considered as the standardized industry benchmark for testing big data systems. As shown in Figure 7, the horizontal axis is query name and the vertical axis is query completion time. The overall reduction portion of query time that SCache achieved is 40% on average. Since this evaluation presents the overall job completion time of queries, we believe that our shuffle optimization is promising.
 
 <p align="center"><img src="https://github.com/wuchunghsuan/SCache/blob/master/fig/tpc-ds.png" width="85%"/></p>
-<p align="center">Figure 6: TPC-DS Benchmark Evaluation</p>
+<p align="center">Figure 7: TPC-DS Benchmark Evaluation</p>
 
 ## How to Use SCache
 
